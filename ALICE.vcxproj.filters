@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="src\alice\MODEL.h">
+      <Filter>MVC</Filter>
+    </ClInclude>
+    <ClInclude Include="src\alice\Controller.h">
+      <Filter>MVC</Filter>
+    </ClInclude>
+    <ClInclude Include="src\alice\utilities.h">
+      <Filter>MVC</Filter>
+    </ClInclude>
+    <ClInclude Include="src\alice\object.h">
+      <Filter>MVC</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="MVC">
+      <UniqueIdentifier>{363452be-02d7-4398-854d-90ea253cf8b3}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\userSrc\sketch_instanceMeshes.cpp" />
+    <ClCompile Include="src\userSrc\sketch_parcel.cpp" />
+    <ClCompile Include="src\userSrc\sketch_empty.cpp" />
+  </ItemGroup>
+</Project>
