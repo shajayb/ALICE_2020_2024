@@ -173,6 +173,7 @@ zVector IntersectEdges(zVector& p1, zVector& p2, zVector& p3, zVector& p4, Inter
 #include "spatialBin.h"
 
 #define nPoly 64
+#define num_centers 200
 double width = 0.5;
 
 class alignedBox
@@ -186,6 +187,11 @@ public:
 
 	zVector boxPoints[nPoly];
 	zVector boxPointsNormals[nPoly];
+
+	zVector centerPoints[num_centers];
+	int n_cen = 0;
+	zVector forces[num_centers];
+
 	int nPoints;
 	bool boolMove[nPoly];
 	int id_u, id_v;
@@ -561,7 +567,76 @@ public:
 		}
 
 	}
-	// define actions or methods;
+
+	void addCenter()
+	{
+		
+		centerPoints[n_cen++] = centerOfBox + zVector(ofRandom(-1, 1), ofRandom(-1, 1), 0);
+		if (n_cen >= num_centers)n_cen = 0;
+	}
+	
+	void makeCentersEquiDistant()
+	{
+		// reset forces
+		for (int i = 0; i < n_cen; i++)forces[i] = zVector(0, 0, 0);
+
+		//calculate & store repulsive force per point
+		for (int i = 0; i < n_cen; i++)
+		{
+			for (int j = 0; j < n_cen; j++)
+			{
+				if (i == j) continue;
+
+				zVector e = centerPoints[j] - centerPoints[i];
+				float d = centerPoints[j].distanceTo(centerPoints[i]);
+
+				if (d > 1e-2)
+				{
+					e.normalize();
+					e /= d * d;
+					forces[i] -= e;
+				}
+
+			}
+		}
+
+		// calculate the maximum and minimum magnitude of reuplisve force
+		normaliseForces();
+
+		// move each of the points, by applying their respective forces, if the magnitude of force is less than 1 and the point is with a radius of 10 from the origin;
+		for (int i = 0; i < n_cen; i++)
+			if (forces[i].length() < 1)
+			{
+				centerPoints[i] += forces[i];
+				if (!insidePolygon(boxPoints, nPoints, centerPoints[i], 0))centerPoints[i] -= forces[i]*2;
+				
+			}
+				
+				
+	}
+
+	void normaliseForces()
+	{
+		double force_max, force_min;
+		force_min = 1e6; force_max = -force_min;
+
+		for (int i = 0; i < n_cen; i++)
+		{
+			float d = forces[i].length();
+			force_max = MAX(force_max, d);
+			force_min = MIN(force_min, d);
+		}
+
+		// re-scale all forces to be within 0 & 1
+		for (int i = 0; i < n_cen; i++)
+		{
+			float d = forces[i].length();
+			forces[i].normalize();
+			forces[i] *= ofMap(d, force_min, force_max, 0, 1);
+
+		}
+	}
+
 	zVector norm;
 	void drawBox()
 	{
@@ -599,6 +674,12 @@ public:
 			
 		}
 
+		for (int i = 0; i < n_cen; i++)
+		{
+			drawPoint(zVecToAliceVec(centerPoints[i]));
+			drawLine(zVecToAliceVec(centerPoints[i]), zVecToAliceVec(centerPoints[i] + forces[i]));
+		}
+
 		glPointSize(1);
 	}
 };
@@ -622,6 +703,7 @@ zVector cen2(12, 12, 0);
 
 bool compute = false;
 bool equalise = false;
+bool equaliseD = false;
 
 
 void setup() // events // eventHandles
@@ -730,6 +812,10 @@ void update(int value) // an event that run 100 times a second, automatically, w
 		keyPress('b', 0, 0);
 	}
 	
+	if (equaliseD)
+	{
+		keyPress('D', 0, 0);
+	}
 	
 }
 
@@ -776,6 +862,22 @@ int np = 0;
 void keyPress(unsigned char k, int xm, int ym) // events
 {
 
+
+	if (k == 'C')
+	{
+		for (auto& p : parcels)
+		{
+			for (int i = 0; i < num_centers-1; i++)
+				p.addCenter();
+		}
+				
+	}
+
+	if (k == 'D')
+	{
+		for (auto& p : parcels)p.makeCentersEquiDistant();
+	}
+
 	if (k == 'B')
 	{
 		//zObjMesh o_fixeBoundaryMesh;
@@ -784,6 +886,7 @@ void keyPress(unsigned char k, int xm, int ym) // events
 
 
 	}
+	
 	
 	if (k == '+')
 	{
@@ -821,6 +924,8 @@ void keyPress(unsigned char k, int xm, int ym) // events
 		
 	}
 
+	//-------------  smooth paths
+
 	if (k == 'h')
 	{
 		alignedBox ab;
@@ -845,6 +950,8 @@ void keyPress(unsigned char k, int xm, int ym) // events
 			
 		}
 	}
+
+	//-------------  compute paths
 
 	if (k == 'g')
 	{
@@ -913,7 +1020,7 @@ void keyPress(unsigned char k, int xm, int ym) // events
 
 	}
 
-	
+	/////////////// update spaceGrid ;
 	if (k == 'b')
 	{
 
@@ -958,63 +1065,18 @@ void keyPress(unsigned char k, int xm, int ym) // events
 		SG.PartitionParticlesToBuckets();
 	}
 
-	if (k == '0')
-	{
-		for (auto& parcel : parcels)parcel.expand(parcels);
-		//for (auto& parcel : parcels)parcel.expand_withNormalCheck(parcels,true);
-
-		for (int i = 0; i < parcels.size(); i++)
-			for (int j = i + 1; j < parcels.size(); j++)
-				parcels[i].parcel_parcel_intersect(parcels[j]);
-
-		for (auto& parcel : parcels)parcel.smooth();
-		for (auto& parcel : parcels)parcel.computeNormals();
-
-	}
-		
-	if (k == '9')
-	{
 	
-		for (auto& parcel : parcels)parcel.equaliseEdgeLengths();
-	}
-	
-	if (k == '1')
-	{
-		for (auto& parcel : parcels)parcel.smooth();
-	}
 
-	if (k == '2')
-	{
-		for (auto& parcel : parcels)parcel.computeNormals();
-	}
-
-
-	if (k == '3')
-	{
-		for (auto& parcel : parcels)
-		{
-			parcel.flipNormals_always = true;
-			parcel.flipNormals();
-		}
-	}
-
-
-	if (k == '-')
-	{
-		for (auto& parcel : parcels)parcel.shortenNormal();
-	}
-	if (k == '=')
-	{
-		for (auto& parcel : parcels)parcel.shortenNormal(true);
-	}
-
-
+	//---------------------------------------
 	
 	if(k == 'r')
 		compute = !compute;
 
 	if(k == 'e')
 		equalise = !equalise;
+
+	if (k == 'E')
+		equaliseD = !equaliseD;
 
 	if (k == 's')
 	{

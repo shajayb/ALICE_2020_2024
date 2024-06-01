@@ -116,7 +116,7 @@ int outsidePolygon(zVector* polygon, int N, zVector& p, int bound)
 zVector points[num];
 zVector forces[num];
 
-void normaliseForcesAndUpdatePoints()
+void normaliseForces()
 {
 	double force_max, force_min;
 	force_min = 1e6; force_max = -force_min;
@@ -136,11 +136,6 @@ void normaliseForcesAndUpdatePoints()
 		forces[i] *= ofMap(d, force_min, force_max, 0, 1);
 
 	}
-
-	// move each of the points, by applying their respective forces, if the magnitude of force is less than 1 and the point is whtin a radius of 10 from the origin;
-	for (int i = 0; i < num; i++)
-		if (forces[i].length() < 1 && points[i].length() < 10)
-			points[i] += forces[i];
 }
 
 void setup() // events // eventHandles
@@ -286,26 +281,9 @@ void keyPress(unsigned char k, int xm, int ym) // events
 		}
 
 		// calculate the maximum and minimum magnitude of reuplisve force
-		double force_max, force_min;
-		force_min = 1e6; force_max = -force_min;
+		normaliseForces();
 
-		for (int i = 0; i < num; i++)
-		{
-			float d = forces[i].length();
-			force_max = MAX(force_max, d);
-			force_min = MIN(force_min, d);
-		}
-
-		// re-scale all forces to be within 0 & 1
-		for (int i = 0; i < num; i++)
-		{
-			float d = forces[i].length();
-			forces[i].normalize();
-			forces[i] *= ofMap(d, force_min, force_max, 0, 1);
-
-		}
-
-		// move each of the points, by applying their respective forces, if the magnitude of force is less than 1 and the point is whtin a radius of 10 from the origin;
+		// move each of the points, by applying their respective forces, if the magnitude of force is less than 1 and the point is with a radius of 10 from the origin;
 		for (int i = 0; i < num; i++)
 			if (forces[i].length() < 1 && points[i].length() < 10)
 				points[i] += forces[i];
