@@ -28,18 +28,7 @@ double backColor = 0.9; // a 'variable' called 'backColor'; variables store valu
 
 
 #include <headers/zApp/include/zTsPathNetworks.h> 
-zTsGraphShortestPath  graphSP;
-zObjGraph o_graph;
-vector<zObjGraph> o_shortestPaths;
-zObjMesh o_pathMesh;
-zObjMesh o_fixeBoundaryMesh;
 
-// global declaration
-zVector cen(0,0,0);
-zVector cen1(-15, -15, 0);
-zVector cen2(12, 12, 0);
-
-double width = 0.5;
 
 // classes - data structure .. ie a compound way to store and retrieve information, and act on them.
 // encapsulation ;
@@ -173,6 +162,7 @@ zVector IntersectEdges(zVector& p1, zVector& p2, zVector& p3, zVector& p4, Inter
 #include "spatialBin.h"
 
 #define nPoly 64
+double width = 0.5;
 
 class alignedBox
 {
@@ -602,17 +592,23 @@ public:
 	}
 };
 
-//make an instance of the class alignedBox;
-//#include <headers/app/include/Tools/zTsPathNetworks.h> 
-
 
 vector<alignedBox> parcels;
-
-//spaceGrid spaceDiv;
 zObjMesh o_fieldMesh;
+spaceGrid SG;
 zModel model;
 
-spaceGrid SG;
+zTsGraphShortestPath  graphSP;
+zObjGraph o_graph;
+vector<zObjGraph> o_shortestPaths;
+zObjMesh o_pathMesh;
+zObjMesh o_fixeBoundaryMesh;
+
+// global declaration
+zVector cen(0, 0, 0);
+zVector cen1(-15, -15, 0);
+zVector cen2(12, 12, 0);
+
 
 
 void setup() // events // eventHandles
