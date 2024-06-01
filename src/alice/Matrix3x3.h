@@ -3,7 +3,7 @@
 
 struct eigenPair
 {
-	vec eVec;
+	zVector eVec;
 	double eVal;
 };
 
@@ -22,7 +22,7 @@ public:
 		entriesToCoef() ;
 	}
 
-	Matrix3x3( vec cl1, vec cl2, vec cl3 )
+	Matrix3x3( zVector cl1, zVector cl2, zVector cl3 )
 	{
 		entries[0][0] = a1 = cl1.x ;
 		entries[1][0] = a2 = cl1.y ;
@@ -152,7 +152,7 @@ public:
 	
 	////////////////////////////////////////////////////////////////////////// MANIPULATORS
 	
-	void replace( vec cl , int col )
+	void replace( zVector cl , int col )
 	{
 		entries[0][col] = cl.x ;
 		entries[1][col] = cl.y ;
@@ -164,7 +164,7 @@ public:
 	
 	////////////////////////////////////////////////////////////////////////// COMPUTE
 	
-	vec solve( vec R ) // solve non-homogenous via cramer's method
+	zVector solve( zVector R ) // solve non-homogenous via cramer's method
 	{
 		Matrix3x3 tmp ;
 
@@ -182,14 +182,14 @@ public:
 
 		double D = det() ;
 
-			if( fabs(D) < EPS )return vec(0,0,0) ;
+			if( fabs(D) < EPS )return zVector(0,0,0) ;
 
-		return vec( Dx/D , Dy/D , Dz / D );
+		return zVector( Dx/D , Dy/D , Dz / D );
 	}
 
-	vec solve_gauss() // solve homogeneous via Gaussian elimination method
+	zVector solve_gauss() // solve homogeneous via Gaussian elimination method
 	{
-		if( fabs(det()) > EPS )return vec(0,0,0); // only trivial solutions
+		if( fabs(det()) > EPS )return zVector(0,0,0); // only trivial solutions
 
 		Matrix3x3 augM = *this ;
 		int n = 3 ;
@@ -248,19 +248,19 @@ public:
 			z = 1.0 ;
 		}
 
-		return vec(x,y,z) ;
+		return zVector(x,y,z) ;
 
 	}
 
 
 
-	static Matrix3x3  covarianceMatrix( vec *points , vec &mean ,int N , double *wts=NULL )
+	static Matrix3x3  covarianceMatrix( zVector *points , zVector &mean ,int N , double *wts=NULL )
 	{
 		Matrix3x3 cov;
 
 		// calc means in x,y,z ;
 		double sumW ;
-		mean = vec(0,0,0);
+		mean = zVector(0,0,0);
 		sumW=0;
 		for (int i = 0; i < N; i++)mean += points[i] * ( wts == NULL ? 1.0 : wts[i]);
 		if( wts !=NULL )for (int i = 0; i < N; i++)sumW += wts[i];
@@ -284,10 +284,10 @@ public:
 		return cov ;
 	}
 
-	static vec  solveCubic_allReal(double a, double b, double c, double d)
+	static zVector  solveCubic_allReal(double a, double b, double c, double d)
 	{
 
-		vec ret ;
+		zVector ret ;
 
 		b /= a;
 		c /= a;
@@ -324,7 +324,7 @@ public:
 		return ret ;
 	}
 
-	static void sortEigenPairs( vec *eigenVectors, vec &eigenValues )
+	static void sortEigenPairs( zVector *eigenVectors, zVector &eigenValues )
 	{
 		eigenPair ev[3];
 		for( int i =0 ; i < 3 ; i++ )
@@ -345,7 +345,7 @@ public:
 
 		for( int i =0 ; i < 3 ; i++ )eigenVectors[i]=ev[i].eVec ;
 	}
-	static void findEigenVectors( Matrix3x3 &A, vec &eigenValues, vec* eigenVectors  ) 
+	static void findEigenVectors( Matrix3x3 &A, zVector &eigenValues, zVector* eigenVectors  ) 
 	{
 		
 		// solve characteristic (cubic)polynomial for the eigenValues ;
@@ -365,34 +365,34 @@ public:
 
 		if( eigenVectors[1] == eigenVectors[2] )
 		{
-			eigenVectors[1] = eigenVectors[0].cross(vec(1,0,0));
-			eigenVectors[2] = eigenVectors[0].cross(eigenVectors[1]);
+			eigenVectors[1] = eigenVectors[0]^(zVector(1,0,0));
+			eigenVectors[2] = eigenVectors[0]^(eigenVectors[1]);
 			eigenValues.y = eigenValues.z = eigenValues.x+1;
 			cout << "repeated eigen vals" << endl ;
 		}
 
 		sortEigenPairs(eigenVectors,eigenValues);
 	}
-	static vec *  PCA( string ptsFile,int &N,vec &mean, vec &eigenValues , vec* eigenVectors , double *wts=NULL )
-	{
-		
-		// read points
-		importer ptsReader( ptsFile ,  100000 , 1.0  );
-		ptsReader.readPts_p5();
-		vec *points  = new vec[ptsReader.nCnt]; // !!! TODO : this is a memory leak ... remove this method.
-		N = ptsReader.nCnt ;
+	//static zVector *  PCA( string ptsFile,int &N,zVector &mean, zVector &eigenValues , zVector* eigenVectors , double *wts=NULL )
+	//{
+	//	
+	//	// read points
+	//	importer ptsReader( ptsFile ,  100000 , 1.0  );
+	//	ptsReader.readPts_p5();
+	//	zVector *points  = new zVector[ptsReader.nCnt]; // !!! TODO : this is a memory leak ... remove this method.
+	//	N = ptsReader.nCnt ;
 
-		// construct point array ;
-		for( int i =0 ; i < N ; i++ )points[i] = ptsReader.nodes[i].pos ;
+	//	// construct point array ;
+	//	for( int i =0 ; i < N ; i++ )points[i] = ptsReader.nodes[i].pos ;
 
-		// calculate covariance matrix
-		Matrix3x3 cov  = covarianceMatrix(points,mean,N,wts);
-		findEigenVectors(cov,eigenValues,eigenVectors);
-		
-		return points;
-	}
+	//	// calculate covariance matrix
+	//	Matrix3x3 cov  = covarianceMatrix(points,mean,N,wts);
+	//	findEigenVectors(cov,eigenValues,eigenVectors);
+	//	
+	//	return points;
+	//}
 
-	static void PCA( vec *points,int N, vec &mean, vec &eigenValues , vec* eigenVectors , double *wts=NULL )
+	static void PCA( zVector *points,int N, zVector &mean, zVector &eigenValues , zVector* eigenVectors , double *wts=NULL )
 	{
 		// calculate covariance matrix
 		Matrix3x3 cov  = covarianceMatrix(points,mean,N,wts);
@@ -419,14 +419,14 @@ public:
 		c3 = entries[2][2] ;
 	}
 
-	static double  getMean( vec &mean , int &i )
+	static double  getMean( zVector &mean , int &i )
 	{
 		if( i == 0 )return mean.x ;
 		if( i == 1 )return mean.y ;
 		if( i == 2 )return mean.z ;
 	}
 
-	static double  getCoord( vec &point , int &i )
+	static double  getCoord( zVector &point , int &i )
 	{
 		if( i == 0 )return point.x ;
 		if( i == 1 )return point.y ;

@@ -171,9 +171,13 @@ zVector IntersectEdges(zVector& p1, zVector& p2, zVector& p3, zVector& p4, Inter
 }
 
 #include "spatialBin.h"
+#include "Matrix3x3.h"
+
+Matrix3x3 mat;
+
 
 #define nPoly 64
-#define num_centers 200
+#define num_centers 50
 double width = 0.5;
 
 class alignedBox
@@ -184,6 +188,7 @@ public:
 	//declare class variables.
 	zVector directionOfBox;
 	zVector centerOfBox;
+	float areaOfBox;
 
 	zVector boxPoints[nPoly];
 	zVector boxPointsNormals[nPoly];
@@ -202,14 +207,14 @@ public:
 
 	float restLength = 0.2;
 
-	void setDefaultBox()
+	void setDefaultBox(float r = 3)
 	{
 		
 		
 		nPoints = nPoly;
 
 		float inc = TWO_PI / float(nPoly);
-		float r =  3; // ofRandom(1, 3);// *sqrt(2);
+		//float r =  3; // ofRandom(1, 3);// *sqrt(2);
 
 		for (int i = 0; i < nPoints; i++)
 		{
@@ -313,6 +318,38 @@ public:
 			norm.normalize();
 			boxPointsNormals[i] = norm * normScale * (flipNormals_always ? -1 : 1) ;
 		}
+	}
+
+	float computeParcelArea()
+	{
+		areaOfBox = 0;
+		for (int i = 0; i < nPoints; i++)
+		{
+			int nxt = Mod(i + i, nPoints);
+			areaOfBox += ((boxPoints[nxt] - boxPoints[i]) ^ (centerOfBox - boxPoints[i])).length() * 0.5;
+
+		}
+
+		return areaOfBox;
+	}
+
+	void computePCA()
+	{
+		Matrix3x3 mat;
+		zVector mean, eigenVals, eigenVecs[3];
+		//double wts[3];
+
+		mat.PCA(boxPoints, nPoints, mean, eigenVals, eigenVecs);
+
+		for (int i = 0; i < 3; i++)
+		{
+			printf("%1.2f,%1.2f,%1.f  -- %i \n", eigenVecs[i].x, eigenVecs[i].y, eigenVecs[i].z, i);
+		}
+
+		cout << " ----------------- " << endl;
+		
+		eigenVecs[2].normalize();
+		directionOfBox = eigenVecs[2] * 5;
 	}
 	// actions / functions / methods
 	void transformBox( )
@@ -862,6 +899,11 @@ int np = 0;
 void keyPress(unsigned char k, int xm, int ym) // events
 {
 
+	if(k =='1')
+	{
+		for (auto& p : parcels)p.computePCA();
+	}
+
 
 	if (k == 'C')
 	{
@@ -888,9 +930,34 @@ void keyPress(unsigned char k, int xm, int ym) // events
 	}
 	
 	
+	
 	if (k == '+')
 	{
+		
+		vector<alignedBox> newParcels;
 		alignedBox AB;
+		for (auto &parcel : parcels)
+		{
+			if (parcel.computeParcelArea() < 3) continue;
+
+			for (int i = 0; i < parcel.n_cen; i++)
+			{
+				if (!insidePolygon(parcel.boxPoints, parcel.nPoints, parcel.centerPoints[i] + parcel.forces[i] * 2, 0))continue;
+
+				AB.centerOfBox = parcel.centerPoints[i];
+				AB.directionOfBox = parcel.directionOfBox;
+				AB.setDefaultBox(0.5);
+				AB.transformBox();
+				AB.id_u = parcels.size() + newParcels.size();
+				newParcels.push_back(AB);
+
+			}
+			
+		}
+
+		copy(newParcels.begin(), newParcels.end(), back_inserter(parcels));
+		
+		/*alignedBox AB;
 
 		int sz = parcels.size();
 		int rnd_parcel = ofRandom(0, sz - 1);
@@ -918,7 +985,7 @@ void keyPress(unsigned char k, int xm, int ym) // events
 			AB.transformBox();
 			AB.id_u = parcels.size();
 			parcels.push_back(AB);
-		}
+		}*/
 
 
 		
