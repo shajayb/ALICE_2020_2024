@@ -8,6 +8,8 @@
 #include <headers/zApp/include/zObjects.h>
 #include <headers/zApp/include/zFnSets.h>
 #include <headers/zApp/include/zViewer.h>
+#include <headers/zApp/include/zTsPathNetworks.h> 
+
 
 using namespace zSpace;
 
@@ -27,7 +29,6 @@ double backColor = 0.9; // a 'variable' called 'backColor'; variables store valu
 //                     calculate, store (variables - arrays,  int, string, bool, float, Alice::vec),retrieve,use ;
 
 
-#include <headers/zApp/include/zTsPathNetworks.h> 
 
 
 // classes - data structure .. ie a compound way to store and retrieve information, and act on them.
@@ -38,6 +39,16 @@ double backColor = 0.9; // a 'variable' called 'backColor'; variables store valu
 // however, Alice is easier to learn
 // There are some classes taht conflict between Alice and zSpace, such as Alice::vec and zVector.
 // as such we need these two conversion functions to convert from Alice::vec to zVector and vice versa.
+
+//----------------------------
+
+// to make use of the actions or methods available in a class,
+// we need to :
+// 1. make an instance of the class
+// 2. provide the isntance with tthe necesssary inputs ( eg center and direction)
+// 3. use the method/s of the class ;
+
+
 
 Alice::vec zVecToAliceVec(zVector& in)
 {
@@ -609,6 +620,8 @@ zVector cen(0, 0, 0);
 zVector cen1(-15, -15, 0);
 zVector cen2(12, 12, 0);
 
+bool compute = false;
+bool equalise = false;
 
 
 void setup() // events // eventHandles
@@ -681,16 +694,6 @@ void setup() // events // eventHandles
 	
 }
 
-
-// to make use of the actions or methods available in a class,
-// we need to :
-// 1. make an instance of the class
-// 2. provide the isntance with tthe necesssary inputs ( eg center and direction)
-// 3. use the method/s of the class ;
-
-bool compute = false;
-bool equalise = false;
-
 void update(int value) // an event that run 100 times a second, automatically, without any user input
 {
 	
@@ -729,7 +732,6 @@ void update(int value) // an event that run 100 times a second, automatically, w
 	
 	
 }
-
 
 void draw() // an event that run 100 times a second, automatically, without any user input
 {
@@ -771,7 +773,6 @@ void draw() // an event that run 100 times a second, automatically, without any 
 }
 
 int np = 0;
-
 void keyPress(unsigned char k, int xm, int ym) // events
 {
 
