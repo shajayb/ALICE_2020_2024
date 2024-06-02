@@ -202,7 +202,7 @@ public:
 	int id_u, id_v;
 
 	float normScale = 1;
-	float collisionRad = 1.5;
+	float collisionRad = 3.5;
 	bool flipNormals_always = false;
 
 	float restLength = 0.2;
