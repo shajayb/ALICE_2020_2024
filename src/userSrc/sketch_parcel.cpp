@@ -202,7 +202,7 @@ public:
 	int id_u, id_v;
 
 	float normScale = 1;
-	float collisionRad = 3.5;
+	float collisionRad = 1.5;
 	bool flipNormals_always = false;
 
 	float restLength = 0.2;
@@ -718,6 +718,8 @@ public:
 		}
 
 		glPointSize(1);
+
+
 	}
 };
 
@@ -829,7 +831,7 @@ void update(int value) // an event that run 100 times a second, automatically, w
 				parcels[i].parcel_parcel_intersect(parcels[j]);*/
 
 		for (auto& parcel : parcels)parcel.smooth();
-		for (auto& parcel : parcels)parcel.computeNormals();
+		//for (auto& parcel : parcels)parcel.computeNormals();
 
 		
 		keyPress('b', 0, 0);
