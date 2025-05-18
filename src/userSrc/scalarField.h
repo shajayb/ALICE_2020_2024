@@ -54,29 +54,28 @@ public:
         }
     }
 
-    void addRadialBasisFunctions(const std::vector<zVector>& centers)
+    void addRadialFunctions(const std::vector<zVector>& centers, float radius = 5.0f)
     {
         for (int i = 0; i < RES; i++)
         {
             for (int j = 0; j < RES; j++)
             {
                 zVector pt = gridPoints[i][j];
-                float value = 0.0f;
+                float minDist = 1e6f;
 
                 for (const auto& c : centers)
                 {
-                    zVector tmp = c;
-                    float d = pt.distanceTo(tmp);
-
-                    float w = 1.0f / (1.0f + d * d); // inverse quadratic RBF
-                    //float w = d * d; // or just 'd' for linear growth
-                    value += w;
+                    zVector cen = c;
+                    float d = pt.distanceTo(cen);
+                    minDist = std::min(minDist, d);
                 }
 
-                field[i][j] = value; // std::min(field[i][j], value);
+                // Signed distance: negative inside the radius
+                field[i][j] = minDist - radius;
             }
         }
     }
+
 
     void addBoxSDF(zVector boxCenter, zVector boxHalfSize)
     {

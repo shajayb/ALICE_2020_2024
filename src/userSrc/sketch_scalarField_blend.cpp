@@ -68,7 +68,7 @@ void draw()
         field1.clearField();
         field2.clearField();
 
-        field1.addOrientedBoxSDF(zVector(-5, -5, 0), zVector(12,6, 0), angleRadians);
+      //  field1.addOrientedBoxSDF(zVector(-5, -5, 0), zVector(12,6, 0), angleRadians);
         
         //field1.addUnevenCapsuleSDF(zVector(-10, 0, 0), zVector(10, 0, 0), 2.0f, 5.0f);
        // field2.addBoxSDF(zVector(5, 5, 0), zVector(4, 2, 0));
@@ -77,10 +77,10 @@ void draw()
        field2.addOrientedBoxSDF(zVector(0, 0, 0), zVector(12, 6, 0), 90 * 3.1415926f / 180.0f);
        //
        
-       /*rbfCenters.push_back(zVector(0, 0, 0));
+       rbfCenters.push_back(zVector(0, 0, 0));
        rbfCenters.push_back(zVector(0, 10, 0));
 
-       field2.addRadialBasisFunctions(rbfCenters);*/
+       field1.addRadialFunctions(rbfCenters);
        // 
        field1.normalise();
        field2.normalise();
