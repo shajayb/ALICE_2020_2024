@@ -13,6 +13,7 @@
     <ClInclude Include="src\alice\object.h">
       <Filter>MVC</Filter>
     </ClInclude>
+    <ClInclude Include="src\userSrc\scalarField.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="MVC">
@@ -20,8 +21,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\userSrc\sketch_instanceMeshes.cpp" />
+    <ClCompile Include="src\userSrc\sketch_chat_AStar_marchingTriangle.cpp" />
     <ClCompile Include="src\userSrc\sketch_parcel.cpp" />
-    <ClCompile Include="src\userSrc\sketch_empty.cpp" />
+    <ClCompile Include="src\userSrc\sketch_heightField.cpp" />
+    <ClCompile Include="src\userSrc\sketch_scalarField_blend.cpp" />
   </ItemGroup>
 </Project>
