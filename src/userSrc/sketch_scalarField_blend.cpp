@@ -51,32 +51,39 @@ void update(int value)
 {
 }
 
+bool initialized = false;
+
 void draw()
 {
     backGround(0.9);
     drawGrid(50);
 
  
-    static bool initialized = false;
+   
     float angle = 30;
     float angleRadians = 30.0f * 3.1415926f / 180.0f;
 
     if (!initialized)
     {
+        field1.clearField();
+        field2.clearField();
+
         field1.addOrientedBoxSDF(zVector(-5, -5, 0), zVector(12,6, 0), angleRadians);
         
         //field1.addUnevenCapsuleSDF(zVector(-10, 0, 0), zVector(10, 0, 0), 2.0f, 5.0f);
        // field2.addBoxSDF(zVector(5, 5, 0), zVector(4, 2, 0));
        //field2.addOrientedBoxSDF(zVector( 8, -5, 0), zVector(12, 6, 0), -30.0f * 3.1415926f / 180.0f);
 
-       //field2.addOrientedBoxSDF(zVector(0, 0, 0), zVector(12, 6, 0), 90 * 3.1415926f / 180.0f);
+       field2.addOrientedBoxSDF(zVector(0, 0, 0), zVector(12, 6, 0), 90 * 3.1415926f / 180.0f);
        //
        
-       rbfCenters.push_back(zVector(0, 0, 0));
+       /*rbfCenters.push_back(zVector(0, 0, 0));
+       rbfCenters.push_back(zVector(0, 10, 0));
 
-       field2.addRadialBasisFunctions(rbfCenters);
+       field2.addRadialBasisFunctions(rbfCenters);*/
        // 
        field1.normalise();
+       field2.normalise();
       // field2.clearField();
 
        
@@ -105,10 +112,28 @@ void draw()
 void keyPress(unsigned char k, int xm, int ym)
 {
      
-    if (k == 'b')
+    if (k == '=')
     {
-        field1.blendWith(field2, smoothness);  // adjust k to control smoothness
-       
+       // field1.blendWith(field2, smoothness);  // adjust k to control smoothness
+        field1.unionWith(field2);
+    }
+
+    if (k == '-')
+    {
+        // field1.blendWith(field2, smoothness);  // adjust k to control smoothness
+        field1.subtract(field2);  // now performs clean SDF subtraction
+        field1.normalise();
+    }
+
+    if (k == '0')
+    {
+        // field1.blendWith(field2, smoothness);  // adjust k to control smoothness
+        field1.intersectWith(field2);
+    }
+
+    if (k == 'i')
+    {
+        initialized = false;
     }
 
    

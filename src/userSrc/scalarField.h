@@ -26,7 +26,7 @@ class ScalarField2D
 {
 public:
 
-    static const int RES = 100;
+    static const int RES = 200;
     int div = 2; 
 
     zVector gridPoints[RES][RES];
@@ -37,11 +37,17 @@ public:
 
     ScalarField2D()
     {
+        float span = 100.0f; // from -50 to +50
+        float step = span / (RES - 1); // spacing between grid points
+
         for (int i = 0; i < RES; i++)
         {
             for (int j = 0; j < RES; j++)
             {
-                gridPoints[i][j] = zVector(i - (RES / div), j - (RES / div), 0);
+                float x = -50.0f + i * step;
+                float y = -50.0f + j * step;
+
+                gridPoints[i][j] = zVector(x, y, 0);
                 field[i][j] = 0.0f;
                 field_normalized[i][j] = 0.0f;
             }
@@ -63,6 +69,7 @@ public:
                     float d = pt.distanceTo(tmp);
 
                     float w = 1.0f / (1.0f + d * d); // inverse quadratic RBF
+                    //float w = d * d; // or just 'd' for linear growth
                     value += w;
                 }
 
@@ -112,6 +119,34 @@ public:
         }
     }
 
+    //void addOrientedBoxSDF(zVector center, zVector halfSize, float angleRadians)
+    //{
+    //    float c = cos(angleRadians);
+    //    float s = sin(angleRadians);
+
+    //    for (int i = 0; i < RES; i++)
+    //    {
+    //        for (int j = 0; j < RES; j++)
+    //        {
+    //            zVector p = gridPoints[i][j] - center;
+
+    //            // Rotate point into box's local frame
+    //            zVector pr(
+    //                c * p.x + s * p.y,
+    //                -s * p.x + c * p.y,
+    //                0.0f
+    //            );
+
+    //            // Compute SDF to axis-aligned box in local frame
+    //            zVector d = zVector(fabs(pr.x), fabs(pr.y), 0.0f) - halfSize;
+    //            float outsideDist = zMax(d, zVector(0, 0, 0)).length();
+    //            float insideDist = std::min(std::max(d.x, d.y), 0.0f);
+
+    //            field[i][j] = std::min(outsideDist + insideDist, field[i][j]);
+    //        }
+    //    }
+    //}
+
     void addOrientedBoxSDF(zVector center, zVector halfSize, float angleRadians)
     {
         float c = cos(angleRadians);
@@ -130,15 +165,20 @@ public:
                     0.0f
                 );
 
-                // Compute SDF to axis-aligned box in local frame
+                // Signed distance to axis-aligned box in local frame
                 zVector d = zVector(fabs(pr.x), fabs(pr.y), 0.0f) - halfSize;
+
+                // Correct SDF: positive outside, negative inside
                 float outsideDist = zMax(d, zVector(0, 0, 0)).length();
                 float insideDist = std::min(std::max(d.x, d.y), 0.0f);
 
-                field[i][j] = std::min(outsideDist + insideDist, field[i][j]);
+                float signedDist = (outsideDist > 0.0f) ? outsideDist : insideDist;
+
+                field[i][j] = signedDist; // std::min(signedDist, field[i][j]);
             }
         }
     }
+
 
     void clearField()
     {
@@ -147,6 +187,29 @@ public:
                 field[i][j] = 0;
 
     }
+    
+    void unionWith(const ScalarField2D& other)
+    {
+        for (int i = 0; i < RES; i++)
+        {
+            for (int j = 0; j < RES; j++)
+            {
+                field[i][j] = std::min(field[i][j], other.field[i][j]);
+            }
+        }
+    }
+
+    void intersectWith(const ScalarField2D& other)
+    {
+        for (int i = 0; i < RES; i++)
+        {
+            for (int j = 0; j < RES; j++)
+            {
+                field[i][j] = std::max(field[i][j], other.field[i][j]);
+            }
+        }
+    }
+
     void subtract(const ScalarField2D& other)
     {
         for (int i = 0; i < RES; i++)
