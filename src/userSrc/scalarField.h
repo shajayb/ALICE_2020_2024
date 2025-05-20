@@ -21,10 +21,43 @@ inline float smin(float a, float b, float k)
     return std::min(a, b) - h * h * k * 0.25f;
 }
 
+inline void getJetColor(float value, float& r, float& g, float& b)
+{
+    // Clamp input to [-1, 1]
+    value = std::clamp(value, -1.0f, 1.0f);
+
+    // Normalize to [0, 1]
+    float normalized = (value + 1.0f) * 0.5f;
+
+    float fourValue = 4.0f * normalized;
+
+    r = std::clamp(std::min(fourValue - 1.5f, -fourValue + 4.5f), 0.0f, 1.0f);
+    g = std::clamp(std::min(fourValue - 0.5f, -fourValue + 3.5f), 0.0f, 1.0f);
+    b = std::clamp(std::min(fourValue + 0.5f, -fourValue + 2.5f), 0.0f, 1.0f);
+}
+
+
+enum class SMinMode
+{
+    MIN,
+    EXPONENTIAL,
+    ROOT,
+    SIGMOID,
+    POLY_QUADRATIC,
+    POLY_CUBIC,
+    POLY_QUARTIC,
+    CIRCULAR,
+    CIRCULAR_GEOMETRIC
+};
+
+#define OUT 1e6
 
 class ScalarField2D
 {
 public:
+
+
+  
 
     static const int RES = 200;
     int div = 2; 
@@ -34,6 +67,7 @@ public:
     float field_normalized[RES][RES];
     zVector gradient[RES][RES];
     std::vector<std::pair<zVector, zVector>> isolines;
+    std::vector<std::vector<zVector>> allContours;
 
     ScalarField2D()
     {
@@ -48,13 +82,23 @@ public:
                 float y = -50.0f + j * step;
 
                 gridPoints[i][j] = zVector(x, y, 0);
-                field[i][j] = 0.0f;
-                field_normalized[i][j] = 0.0f;
+                field[i][j] = 0;
+                
             }
         }
     }
 
-    void addRadialFunctions(const std::vector<zVector>& centers, float radius = 5.0f)
+    void clearField()
+    {
+        for (int i = 0; i < RES; i++)
+            for (int j = 0; j < RES; j++)
+                              field[i][j] = 0;
+
+    }
+
+    //----------------------------------------
+
+    void addVoronoi(const std::vector<zVector>& sites )
     {
         for (int i = 0; i < RES; i++)
         {
@@ -62,89 +106,49 @@ public:
             {
                 zVector pt = gridPoints[i][j];
                 float minDist = 1e6f;
+                float secondMinDist = 1e6f;
 
-                for (const auto& c : centers)
+                for (const auto& site : sites)
                 {
-                    zVector cen = c;
-                    float d = pt.distanceTo(cen);
-                    minDist = std::min(minDist, d);
+                    float d = pt.distanceTo(zVector(site));
+
+                    // Track the two closest sites
+                    if (d < minDist)
+                    {
+                        secondMinDist = minDist;
+                        minDist = d;
+                    }
+                    else if (d < secondMinDist)
+                    {
+                        secondMinDist = d;
+                    }
                 }
 
-                // Signed distance: negative inside the radius
-                field[i][j] = minDist - radius;
+                // Distance to the second closest site minus closest — sharpest at Voronoi edge
+                field[i][j] = (secondMinDist - minDist);
             }
         }
+
     }
 
-
-    void addBoxSDF(zVector boxCenter, zVector boxHalfSize)
+    void addCircleSDF(zVector center, float radius , bool invertDistance = true)
     {
         for (int i = 0; i < RES; i++)
         {
             for (int j = 0; j < RES; j++)
             {
-                zVector p = gridPoints[i][j] - boxCenter;
-                zVector q(fabs(p.x), fabs(p.y), 0);
-                zVector d = q - boxHalfSize;
+                zVector pt = gridPoints[i][j];
+                float d = pt.distanceTo(center);
 
-                float outsideDist = zMax(d, zVector(0, 0, 0)).length();
-                float insideDist = std::min(std::max(d.x, d.y), 0.0f);
-
-                field[i][j] = outsideDist + insideDist;
+                // Signed distance: negative inside, zero on boundary, positive outside
+                float val = (d > radius) ? d : d - radius;
+                
+                field[i][j] = val;// std::min(val, field[i][j]);
             }
         }
+
+        rescaleFieldToRange(-1, 1);//closedfields rescale to -1,1
     }
-
-    void addUnevenCapsuleSDF(zVector a, zVector b, float ra, float rb)
-    {
-        for (int i = 0; i < RES; i++)
-        {
-            for (int j = 0; j < RES; j++)
-            {
-                zVector p = gridPoints[i][j];
-
-                zVector pa = p - a;
-                zVector ba = b - a;
-
-                float hRaw = (pa * ba) / (ba * ba);
-                float h = (hRaw < 0.0f) ? 0.0f : (hRaw > 1.0f) ? 1.0f : hRaw;
-
-                float r = ra + (rb - ra) * h;
-
-                float sdf = (pa - ba * h).length() - r;
-
-                field[i][j] = sdf;
-            }
-        }
-    }
-
-    //void addOrientedBoxSDF(zVector center, zVector halfSize, float angleRadians)
-    //{
-    //    float c = cos(angleRadians);
-    //    float s = sin(angleRadians);
-
-    //    for (int i = 0; i < RES; i++)
-    //    {
-    //        for (int j = 0; j < RES; j++)
-    //        {
-    //            zVector p = gridPoints[i][j] - center;
-
-    //            // Rotate point into box's local frame
-    //            zVector pr(
-    //                c * p.x + s * p.y,
-    //                -s * p.x + c * p.y,
-    //                0.0f
-    //            );
-
-    //            // Compute SDF to axis-aligned box in local frame
-    //            zVector d = zVector(fabs(pr.x), fabs(pr.y), 0.0f) - halfSize;
-    //            float outsideDist = zMax(d, zVector(0, 0, 0)).length();
-    //            float insideDist = std::min(std::max(d.x, d.y), 0.0f);
-
-    //            field[i][j] = std::min(outsideDist + insideDist, field[i][j]);
-    //        }
-    //    }
-    //}
 
     void addOrientedBoxSDF(zVector center, zVector halfSize, float angleRadians)
     {
@@ -164,28 +168,21 @@ public:
                     0.0f
                 );
 
-                // Signed distance to axis-aligned box in local frame
                 zVector d = zVector(fabs(pr.x), fabs(pr.y), 0.0f) - halfSize;
 
-                // Correct SDF: positive outside, negative inside
                 float outsideDist = zMax(d, zVector(0, 0, 0)).length();
                 float insideDist = std::min(std::max(d.x, d.y), 0.0f);
 
-                float signedDist = (outsideDist > 0.0f) ? outsideDist : insideDist;
+                float signedDist = (outsideDist > 0.0f) ? outsideDist  :  insideDist;
 
-                field[i][j] = signedDist; // std::min(signedDist, field[i][j]);
+                field[i][j] = signedDist ;// std::min(signedDist * scale, field[i][j]);
             }
         }
+
+        rescaleFieldToRange(-1, 1);//closedfields rescale to -1,1
     }
 
-
-    void clearField()
-    {
-        for (int i = 0; i < RES; i++)
-          for (int j = 0; j < RES; j++)
-                field[i][j] = 0;
-
-    }
+    //----------------------------------------
     
     void unionWith(const ScalarField2D& other)
     {
@@ -220,17 +217,112 @@ public:
         }
     }
 
-    void blendWith(const ScalarField2D& other, float smooth_k)
+    void blendWith(const ScalarField2D& other, float smooth_k, SMinMode mode = SMinMode::EXPONENTIAL)
     {
+        auto smin_exponential = [](float a, float b, float k)
+            {
+                float r = exp2(-a / k) + exp2(-b / k);
+                return -k * log2(r);
+            };
+
+        auto smin_root = [](float a, float b, float k)
+            {
+                k *= 2.0f;
+                float x = b - a;
+                return 0.5f * (a + b - sqrtf(x * x + k * k));
+            };
+
+        auto smin_sigmoid = [](float a, float b, float k)
+            {
+                k *= logf(2.0f);
+                float x = b - a;
+                return a + x / (1.0f - exp2(x / k));
+            };
+
+        auto smin_polyQuadratic = [](float a, float b, float k)
+            {
+                k *= 4.0f;
+                float h = std::max(k - fabs(a - b), 0.0f) / k;
+                return std::min(a, b) - h * h * k * 0.25f;
+            };
+
+        auto smin_polyCubic = [](float a, float b, float k)
+            {
+                k *= 6.0f;
+                float h = std::max(k - fabs(a - b), 0.0f) / k;
+                return std::min(a, b) - h * h * h * k / 6.0f;
+            };
+
+        auto smin_polyQuartic = [](float a, float b, float k)
+            {
+                k *= (16.0f / 3.0f);
+                float h = std::max(k - fabs(a - b), 0.0f) / k;
+                return std::min(a, b) - h * h * h * (4.0f - h) * k / 16.0f;
+            };
+
+        auto smin_circular = [](float a, float b, float k)
+            {
+                k *= 1.0f / (1.0f - sqrtf(0.5f));
+                float h = std::max(k - fabs(a - b), 0.0f) / k;
+                return std::min(a, b) - k * 0.5f * (1.0f + h - sqrtf(1.0f - h * (h - 2.0f)));
+            };
+
+        auto smin_circularGeometric = [](float a, float b, float k)
+            {
+                k *= 1.0f / (1.0f - sqrtf(0.5f));
+                float dx = std::max(k - a, 0.0f);
+                float dy = std::max(k - b, 0.0f);
+                float l = sqrtf(dx * dx + dy * dy);
+                return std::max(k, std::min(a, b)) - l;
+            };
+
         for (int i = 0; i < RES; i++)
         {
             for (int j = 0; j < RES; j++)
             {
-                field[i][j] = smin(field[i][j], other.field[i][j], smooth_k);
+                float a = field[i][j];
+                float b = other.field[i][j];
+
+                switch (mode)
+                {
+                case SMinMode::MIN:
+                    field[i][j] = std::min(a, b);
+                    break;
+                case SMinMode::EXPONENTIAL:
+                    field[i][j] = smin_exponential(a, b, smooth_k);
+                    break;
+                case SMinMode::ROOT:
+                    field[i][j] = smin_root(a, b, smooth_k);
+                    break;
+                case SMinMode::SIGMOID:
+                    field[i][j] = smin_sigmoid(a, b, smooth_k);
+                    break;
+                case SMinMode::POLY_QUADRATIC:
+                    field[i][j] = smin_polyQuadratic(a, b, smooth_k);
+                    break;
+                case SMinMode::POLY_CUBIC:
+                    field[i][j] = smin_polyCubic(a, b, smooth_k);
+                    break;
+                case SMinMode::POLY_QUARTIC:
+                    field[i][j] = smin_polyQuartic(a, b, smooth_k);
+                    break;
+                case SMinMode::CIRCULAR:
+                    field[i][j] = smin_circular(a, b, smooth_k);
+                    break;
+                case SMinMode::CIRCULAR_GEOMETRIC:
+                    field[i][j] = smin_circularGeometric(a, b, smooth_k);
+                    break;
+                default:
+                    field[i][j] = std::min(a, b);
+                    break;
+                }
             }
         }
+
+        rescaleFieldToRange(-1, 1); 
     }
 
+    //---------------------------------------------
 
     void normalise()
     {
@@ -239,6 +331,8 @@ public:
         {
             for (int j = 0; j < RES; j++)
             {
+                if (fabs(field[i][j] - OUT) < 1e-6)continue; //exclude outside
+
                 mn = std::min(mn, field[i][j]);
                 mx = std::max(mx, field[i][j]);
             }
@@ -249,10 +343,41 @@ public:
         {
             for (int j = 0; j < RES; j++)
             {
-                field_normalized[i][j] = ofMap(field[i][j], mn, mx, 0, 1);
+                if (fabs(field[i][j] - OUT) < 1e-6)continue; //exclude outside
+
+                field_normalized[i][j] = ofMap(field[i][j], mn, mx, 0, 1) ;
             }
         }
     }
+
+    void rescaleFieldToRange(float targetMin = -1.0f, float targetMax = 1.0f)
+    {
+        float minVal[2] = { 1e6f,  1e6f };
+        float maxVal[2] = { -1e6f, -1e6f };
+
+        for (int i = 0; i < RES; ++i)
+            for (int j = 0; j < RES; ++j)
+            {
+                float v = field[i][j];
+                int idx = (v >= 0.0f) ? 0 : 1;
+                minVal[idx] = std::min(minVal[idx], v);
+                maxVal[idx] = std::max(maxVal[idx], v);
+            }
+
+        float range[2] = {
+            std::max(maxVal[0] - minVal[0], 1e-6f),
+            std::max(maxVal[1] - minVal[1], 1e-6f)
+        };
+
+        for (int i = 0; i < RES; ++i)
+            for (int j = 0; j < RES; ++j)
+                field[i][j] = (field[i][j] >= 0.0f)
+                ? ofMap(field[i][j], minVal[0], maxVal[0], 0.0f, targetMax)
+                : ofMap(field[i][j], minVal[1], maxVal[1], targetMin, 0.0f);
+    }
+
+    //---------------------------------------------
+
 
     void computeGradient()
     {
@@ -266,6 +391,8 @@ public:
             }
         }
     }
+
+    //---------------------------------------------
 
     void processTriangle(zVector pts[3], float vals[3], float thresh, std::vector<std::pair<zVector, zVector>>& lines)
     {
@@ -287,11 +414,11 @@ public:
         }
     }
 
-    void drawIsocontours(float threshold , bool draw = true)
+    void computeIsocontours( float threshold)
     {
         isolines.clear();
-        normalise();
         
+
         for (int i = 0; i < RES - 1; i++)
         {
             for (int j = 0; j < RES - 1; j++)
@@ -304,10 +431,10 @@ public:
                 };
 
                 float quadVals[4] = {
-                    field_normalized[i][j],
-                    field_normalized[i + 1][j],
-                    field_normalized[i][j + 1],
-                    field_normalized[i + 1][j + 1]
+                    field[i][j],
+                    field[i + 1][j],
+                    field[i][j + 1],
+                    field[i + 1][j + 1]
                 };
 
                 zVector tri1Pts[3] = { quadPts[0], quadPts[1], quadPts[2] };
@@ -320,23 +447,61 @@ public:
                 processTriangle(tri2Pts, tri2Vals, threshold, isolines);
             }
         }
-
-        glColor3f(0, 0, 0);
-        if( draw)
-        for (auto& segment : isolines)
-        {
-            glLineWidth(3);
-             drawLine(zVecToAliceVec(segment.first), zVecToAliceVec(segment.second));
-            glLineWidth(1);
-        }
-
-       
-
     }
+
+    void computeIsocontours(float threshold, std::vector<std::pair<zVector, zVector>>& output)
+    {
+        for (int i = 0; i < RES - 1; i++)
+        {
+            for (int j = 0; j < RES - 1; j++)
+            {
+                zVector p[4] = {
+                    gridPoints[i][j],
+                    gridPoints[i + 1][j],
+                    gridPoints[i + 1][j + 1],
+                    gridPoints[i][j + 1]
+                };
+
+                float v[4] = {
+                    field[i][j],
+                    field[i + 1][j],
+                    field[i + 1][j + 1],
+                    field[i][j + 1]
+                };
+
+                auto addLine = [&](zVector a, zVector b, float va, float vb)
+                    {
+                        if ((va < threshold && vb >= threshold) || (vb < threshold && va >= threshold))
+                        {
+                            float t = (threshold - va) / (vb - va);
+                            output.emplace_back(a + (b - a) * t, zVector());  // start pt added
+                        }
+                    };
+
+                std::vector<zVector> pts;
+                for (int k = 0; k < 4; k++)
+                {
+                    int next = (k + 1) % 4;
+                    if ((v[k] < threshold && v[next] >= threshold) ||
+                        (v[next] < threshold && v[k] >= threshold))
+                    {
+                        float t = (threshold - v[k]) / (v[next] - v[k]);
+                        pts.push_back(p[k] + (p[next] - p[k]) * t);
+                    }
+                }
+
+                if (pts.size() == 2)
+                {
+                    output.emplace_back(pts[0], pts[1]);
+                }
+            }
+        }
+    }
+
 
     std::vector<std::vector<zVector>> getOrderedContours(float tolerance = 1e-4f)
     {
-        std::vector<std::vector<zVector>> allContours;
+        allContours.clear();
         if (isolines.empty()) return allContours;
 
         // Helper lambda for inexact match
@@ -403,6 +568,9 @@ public:
         return allContours;
     }
 
+ 
+    //---------------------------------------------
+
     void smoothContourAdaptive(std::vector<zVector>& contour, int iterations = 1, bool preserveEnds = true, float angleThreshold = 15.0f)
     {
         if (contour.size() < 3) return;
@@ -466,6 +634,74 @@ public:
         }
     }
 
+    //---------------------------------------------
+
+    char s[20];
+    void drawFieldPoints( bool debug = false)
+    {
+        normalise();
+        glPointSize(2);
+        for (int i = 0; i < RES; i++)
+        {
+            for (int j = 0; j < RES; j++)
+            {
+                float f = field[i][j];
+                float r, g, b;
+                getJetColor(f, r, g, b);
+
+                glColor3f(r, g, b);
+                drawPoint(zVecToAliceVec(gridPoints[i][j]));
+
+                if (debug)
+                {
+                    sprintf(s, "%.2f", field[i][j]);
+                    drawString(s, zVecToAliceVec(gridPoints[i][j]));
+                }
+            }
+        }
+        glPointSize(1);
+    }
+
+    void drawIsocontours(float threshold, bool draw = true)
+    {
+
+        computeIsocontours(threshold);
+
+        glColor3f(0, 0, 0);
+        if (draw)
+            for (auto& segment : isolines)
+            {
+                glLineWidth(3);
+                drawLine(zVecToAliceVec(segment.first), zVecToAliceVec(segment.second));
+                glLineWidth(1);
+            }
+
+
+
+    }
+
+    //---------------------------------------
+
+    void printField()
+    {
+        for (int i = 0; i < RES; i++)
+        {
+            for (int j = 0; j < RES; j++)
+            {
+                float f = field[i][j];
+                float r, g, b;
+                getJetColor(f, r, g, b);
+
+                glColor3f(r, g, b);
+                drawPoint(zVecToAliceVec(gridPoints[i][j]));
+
+                sprintf(s, "%.2f", field[i][j]);
+                cout << s << endl;
+            }
+        }
+
+    }
+
     void exportOrderedContoursAsCSV(const std::string& filename, float tolerance = 1e-4f)
     {
         std::ofstream out(filename);
@@ -492,20 +728,4 @@ public:
         std::cout << "Contours exported to: " << filename << std::endl;
     }
 
-
-    void drawFieldPoints()
-    {
-        normalise();
-        glPointSize(1);
-        for (int i = 0; i < RES; i++)
-        {
-            for (int j = 0; j < RES; j++)
-            {
-                float f = field_normalized[i][j];
-                glColor3f(f, 0.0f, 1.0f - f);
-                drawPoint(zVecToAliceVec(gridPoints[i][j]));
-            }
-        }
-        glPointSize(1);
-    }
 };

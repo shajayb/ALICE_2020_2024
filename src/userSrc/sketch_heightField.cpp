@@ -198,10 +198,9 @@ void draw()
     myHeightField.drawFieldPoints();
     
     glLineWidth(5);
-    for( double tv = 0 ; tv < threshold ; tv += 0.05) myHeightField.drawIsocontours(tv);
+        for( double tv = 0 ; tv < threshold ; tv += 0.05) myHeightField.drawIsocontours(tv);
     glLineWidth(1);
 
-   // myHeightField.drawIsocontours(threshold);
    
 
 }

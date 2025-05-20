@@ -25,5 +25,6 @@
     <ClCompile Include="src\userSrc\sketch_parcel.cpp" />
     <ClCompile Include="src\userSrc\sketch_heightField.cpp" />
     <ClCompile Include="src\userSrc\sketch_scalarField_blend.cpp" />
+    <ClCompile Include="src\userSrc\sketch_empty.cpp" />
   </ItemGroup>
 </Project>
