@@ -37,7 +37,7 @@
     <ClCompile Include="src\userSrc\sketch_chat_AStar_marchingTriangle.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_empty.cpp">
+    <ClCompile Include="src\userSrc\sketch_SF_flowerPot.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_heightField.cpp">
