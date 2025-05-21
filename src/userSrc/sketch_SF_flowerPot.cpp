@@ -37,6 +37,7 @@ private:
     float contourZOffset = 0.25f;
 
 public:
+
     std::vector<zVector> centers;
     std::vector<zObjMesh> contourMeshes;
     zObjMesh CombinedMesh;
