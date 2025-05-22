@@ -34,10 +34,13 @@
     <ClInclude Include="src\userSrc\scalarField.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\userSrc\sketch_3DfieldSlicer.cpp" />
+    <ClCompile Include="src\userSrc\sketch_3DfieldSlicer.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="src\userSrc\sketch_chat_AStar_marchingTriangle.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="src\userSrc\Sketch_scalarAdvection.cpp" />
     <ClCompile Include="src\userSrc\sketch_SF_flowerPot.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>

@@ -1,0 +1,248 @@
+
+#define _MAIN_
+#ifdef _MAIN_
+
+#include "main.h"
+
+#include <vector>
+#include <algorithm>
+#include <cmath>
+#include <headers/zApp/include/zObjects.h>
+#include <headers/zApp/include/zFnSets.h>
+#include <headers/zApp/include/zViewer.h>
+
+using namespace zSpace;
+
+Alice::vec zVecToAliceVec(zVector& in)
+{
+    return Alice::vec(in.x, in.y, in.z);
+}
+
+zVector AliceVecToZvec(Alice::vec& in)
+{
+    return zVector(in.x, in.y, in.z);
+}
+
+
+#include "scalarField.h"
+
+#define RES 100
+
+float sourceField[RES][RES];
+float targetField[RES][RES];
+float advectedField[RES][RES];
+
+zVector velocityField[RES][RES];
+
+//--------------------------------------------------
+// Utility Functions
+//--------------------------------------------------
+
+void initializeFields()
+{
+    // Clear fields
+    for (int i = 0; i < RES; i++)
+    {
+        for (int j = 0; j < RES; j++)
+        {
+            float dx = (i - RES / 3);
+            float dy = (j - RES / 3);
+            sourceField[i][j] = expf(-(dx * dx + dy * dy) / 200.0f);
+            targetField[i][j] = 0.0f;
+        }
+    }
+
+    // Target: radial Gaussians on a circle
+    int numBlobs = 8;
+    float radius = RES * 0.35f;
+    zVector center(RES / 2.0f, RES / 2.0f, 0);
+
+    for (int b = 0; b < numBlobs; b++)
+    {
+        float angle = b * TWO_PI / numBlobs;
+        zVector blobCenter = center + zVector(cos(angle), sin(angle), 0) * radius;
+
+        for (int i = 0; i < RES; i++)
+        {
+            for (int j = 0; j < RES; j++)
+            {
+                float dx = i - blobCenter.x;
+                float dy = j - blobCenter.y;
+                targetField[i][j] += 0.15f * expf(-(dx * dx + dy * dy) / 40.0f);
+            }
+        }
+    }
+}
+
+void computeVelocityFieldFromDifference()
+{
+    zVector srcCOM(0, 0, 0), tgtCOM(0, 0, 0);
+    float srcTotal = 0, tgtTotal = 0;
+
+    for (int i = 0; i < RES; i++)
+    {
+        for (int j = 0; j < RES; j++)
+        {
+            srcCOM += zVector(i, j, 0) * sourceField[i][j];
+            tgtCOM += zVector(i, j, 0) * targetField[i][j];
+            srcTotal += sourceField[i][j];
+            tgtTotal += targetField[i][j];
+        }
+    }
+    srcCOM /= srcTotal;
+    tgtCOM /= tgtTotal;
+
+    zVector flowDir = (tgtCOM - srcCOM);
+    flowDir.normalize();
+
+    for (int i = 0; i < RES; i++)
+    {
+        for (int j = 0; j < RES; j++)
+        {
+            velocityField[i][j] = flowDir;
+        }
+    }
+
+}
+
+void computeVelocityFieldFromLocalAttraction()
+{
+    for (int i = 0; i < RES; i++)
+    {
+        for (int j = 0; j < RES; j++)
+        {
+            zVector force(0, 0, 0);
+
+            for (int u = 0; u < RES; u += 4)  // sample coarsely for performance
+            {
+                for (int v = 0; v < RES; v += 4)
+                {
+                    float delta = targetField[u][v] - sourceField[u][v];
+                    if (delta <= 0) continue;
+
+                    zVector dir = zVector(u - i, v - j, 0);
+                    float distSq = std::max(dir * dir, 1.0f);
+                    dir.normalize();
+                    force += dir * (delta / distSq);
+                }
+            }
+            force.normalize();
+            zVector v = force;
+            if (v * v > 0.0001f)
+            {
+                v.normalize();
+                v *= 1.0f; // or scale based on your timestep
+            }
+            else
+            {
+                v = zVector(0, 0, 0); // avoid noise in flat zones
+            }
+            velocityField[i][j] = v;
+        }
+    }
+}
+
+
+void advectField(float dt = 1.0f)
+{
+    for (int i = 1; i < RES - 1; i++)
+    {
+        for (int j = 1; j < RES - 1; j++)
+        {
+            float x = std::clamp(i - dt * velocityField[i][j].x, 0.0f, float(RES - 1));
+            float y = std::clamp(j - dt * velocityField[i][j].y, 0.0f, float(RES - 1));
+
+            int i0 = std::clamp(int(floor(x)), 0, RES - 1);
+            int i1 = std::clamp(i0 + 1, 0, RES - 1);
+            int j0 = std::clamp(int(floor(y)), 0, RES - 1);
+            int j1 = std::clamp(j0 + 1, 0, RES - 1);
+
+            float sx = x - i0;
+            float sy = y - j0;
+
+            float val = (1 - sx) * (1 - sy) * sourceField[i0][j0] +
+                sx * (1 - sy) * sourceField[i1][j0] +
+                (1 - sx) * sy * sourceField[i0][j1] +
+                sx * sy * sourceField[i1][j1];
+
+            advectedField[i][j] = val;
+        }
+    }
+}
+
+//--------------------------------------------------
+// MVC Callbacks
+//--------------------------------------------------
+
+void setup()
+{
+    initializeFields();
+    computeVelocityFieldFromDifference();
+    advectField(0.5f);
+}
+
+void update(int value)
+{
+    // Optional: animate or iterate advection
+}
+
+void draw()
+{
+    backGround(0.8);
+    drawGrid(50);
+
+    glPointSize(2);
+    for (int i = 1; i < RES; i++)
+    {
+        for (int j = 1; j < RES; j++)
+        {
+            float r = advectedField[i][j];
+            glColor3f(r, 0, 0);
+            drawPoint(Alice::vec(i, j, 0));
+        }
+    }
+    glPointSize(1);
+
+
+    glPushMatrix();
+    glTranslatef(100, 0, 0);
+
+        glPointSize(2);
+        for (int i = 1; i < RES; i++)
+        {
+            for (int j = 1; j < RES; j++)
+            {
+                float r = targetField[i][j];
+                glColor3f(r, 0, 0);
+                drawPoint(Alice::vec(i, j, 0));
+            }
+        }
+        glPointSize(1);
+    
+    glPopMatrix();
+}
+
+void keyPress(unsigned char k, int xm, int ym)
+{
+    if (k == 'r')
+    {
+        computeVelocityFieldFromLocalAttraction();
+        advectField(1);
+
+        // overwrite sourceField with advectedField for next step
+        for (int i = 0; i < RES; i++)
+        {
+            for (int j = 0; j < RES; j++)
+            {
+                sourceField[i][j] = advectedField[i][j];
+            }
+        }
+
+    }
+}
+
+void mousePress(int b, int state, int x, int y) {}
+void mouseMotion(int x, int y) {}
+
+
+#endif // _MAIN_
