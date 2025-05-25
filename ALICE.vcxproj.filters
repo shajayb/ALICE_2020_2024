@@ -28,5 +28,6 @@
     <ClCompile Include="src\userSrc\sketch_SF_flowerPot.cpp" />
     <ClCompile Include="src\userSrc\sketch_3DfieldSlicer.cpp" />
     <ClCompile Include="src\userSrc\Sketch_scalarAdvection.cpp" />
+    <ClCompile Include="src\userSrc\sketch_circleSDFFitter.cpp" />
   </ItemGroup>
 </Project>

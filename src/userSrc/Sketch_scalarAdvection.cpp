@@ -1,4 +1,3 @@
-
 #define _MAIN_
 #ifdef _MAIN_
 
@@ -23,16 +22,19 @@ zVector AliceVecToZvec(Alice::vec& in)
     return zVector(in.x, in.y, in.z);
 }
 
-
-#include "scalarField.h"
+using namespace zSpace;
 
 #define RES 100
+#define EPSILON 1e-6
+#define SINKHORN_ITER 100
+#define LAMBDA 0.1f
 
 float sourceField[RES][RES];
 float targetField[RES][RES];
 float advectedField[RES][RES];
 
 zVector velocityField[RES][RES];
+zVector flowField[RES][RES];
 
 //--------------------------------------------------
 // Utility Functions
@@ -40,7 +42,6 @@ zVector velocityField[RES][RES];
 
 void initializeFields()
 {
-    // Clear fields
     for (int i = 0; i < RES; i++)
     {
         for (int j = 0; j < RES; j++)
@@ -52,7 +53,6 @@ void initializeFields()
         }
     }
 
-    // Target: radial Gaussians on a circle
     int numBlobs = 8;
     float radius = RES * 0.35f;
     zVector center(RES / 2.0f, RES / 2.0f, 0);
@@ -74,74 +74,83 @@ void initializeFields()
     }
 }
 
-void computeVelocityFieldFromDifference()
+void computeVelocityFieldFromSinkhorn()
 {
-    zVector srcCOM(0, 0, 0), tgtCOM(0, 0, 0);
-    float srcTotal = 0, tgtTotal = 0;
+    const int N = RES * RES;
+    std::vector<float> mu(N), nu(N);
+    std::vector<float> K(N * N);
+    std::vector<float> u(N, 1.0f), v(N, 1.0f);
 
     for (int i = 0; i < RES; i++)
-    {
         for (int j = 0; j < RES; j++)
         {
-            srcCOM += zVector(i, j, 0) * sourceField[i][j];
-            tgtCOM += zVector(i, j, 0) * targetField[i][j];
-            srcTotal += sourceField[i][j];
-            tgtTotal += targetField[i][j];
+            int id = i * RES + j;
+            mu[id] = sourceField[i][j];
+            nu[id] = targetField[i][j];
         }
-    }
-    srcCOM /= srcTotal;
-    tgtCOM /= tgtTotal;
-
-    zVector flowDir = (tgtCOM - srcCOM);
-    flowDir.normalize();
 
     for (int i = 0; i < RES; i++)
     {
         for (int j = 0; j < RES; j++)
         {
-            velocityField[i][j] = flowDir;
-        }
-    }
-
-}
-
-void computeVelocityFieldFromLocalAttraction()
-{
-    for (int i = 0; i < RES; i++)
-    {
-        for (int j = 0; j < RES; j++)
-        {
-            zVector force(0, 0, 0);
-
-            for (int u = 0; u < RES; u += 4)  // sample coarsely for performance
+            int a = i * RES + j;
+            for (int m = 0; m < RES; m++)
             {
-                for (int v = 0; v < RES; v += 4)
+                for (int n = 0; n < RES; n++)
                 {
-                    float delta = targetField[u][v] - sourceField[u][v];
-                    if (delta <= 0) continue;
-
-                    zVector dir = zVector(u - i, v - j, 0);
-                    float distSq = std::max(dir * dir, 1.0f);
-                    dir.normalize();
-                    force += dir * (delta / distSq);
+                    int b = m * RES + n;
+                    float dx = i - m;
+                    float dy = j - n;
+                    float dist2 = dx * dx + dy * dy;
+                    K[a * N + b] = expf(-dist2 * LAMBDA);
                 }
             }
-            force.normalize();
-            zVector v = force;
-            if (v * v > 0.0001f)
+        }
+    }
+
+    for (int iter = 0; iter < SINKHORN_ITER; iter++)
+    {
+        for (int i = 0; i < N; i++)
+        {
+            float sum = 0.0f;
+            for (int j = 0; j < N; j++) sum += K[i * N + j] * v[j];
+            u[i] = (sum > EPSILON) ? mu[i] / sum : 0.0f;
+        }
+
+        for (int j = 0; j < N; j++)
+        {
+            float sum = 0.0f;
+            for (int i = 0; i < N; i++) sum += K[i * N + j] * u[i];
+            v[j] = (sum > EPSILON) ? nu[j] / sum : 0.0f;
+        }
+    }
+
+    // Compute flow direction from transport plan
+    for (int i = 0; i < RES; i++)
+    {
+        for (int j = 0; j < RES; j++)
+        {
+            int a = i * RES + j;
+            zVector weightedSum(0, 0, 0);
+            float total = 0.0f;
+
+            for (int m = 0; m < RES; m++)
             {
-                v.normalize();
-                v *= 1.0f; // or scale based on your timestep
+                for (int n = 0; n < RES; n++)
+                {
+                    int b = m * RES + n;
+                    float t = u[a] * K[a * N + b] * v[b];
+                    weightedSum += zVector(m - i, n - j, 0) * t;
+                    total += t;
+                }
             }
-            else
-            {
-                v = zVector(0, 0, 0); // avoid noise in flat zones
-            }
-            velocityField[i][j] = v;
+
+            flowField[i][j] = (total > EPSILON) ? weightedSum / total : zVector(0, 0, 0);
+            flowField[i][j].normalize();
+            velocityField[i][j] = flowField[i][j];
         }
     }
 }
-
 
 void advectField(float dt = 1.0f)
 {
@@ -177,14 +186,11 @@ void advectField(float dt = 1.0f)
 void setup()
 {
     initializeFields();
-    computeVelocityFieldFromDifference();
-    advectField(0.5f);
+    //computeVelocityFieldFromSinkhorn();
+   // advectField(0.5f);
 }
 
-void update(int value)
-{
-    // Optional: animate or iterate advection
-}
+void update(int value) {}
 
 void draw()
 {
@@ -199,45 +205,27 @@ void draw()
             float r = advectedField[i][j];
             glColor3f(r, 0, 0);
             drawPoint(Alice::vec(i, j, 0));
+
+            // Visualize flow vectors
+            if (i % 10 == 0 && j % 10 == 0)
+            {
+                glColor3f(0, 1, 0);
+                drawLine(Alice::vec(i, j, 0), Alice::vec(i, j, 0) + zVecToAliceVec(flowField[i][j] * 2));
+            }
         }
     }
     glPointSize(1);
-
-
-    glPushMatrix();
-    glTranslatef(100, 0, 0);
-
-        glPointSize(2);
-        for (int i = 1; i < RES; i++)
-        {
-            for (int j = 1; j < RES; j++)
-            {
-                float r = targetField[i][j];
-                glColor3f(r, 0, 0);
-                drawPoint(Alice::vec(i, j, 0));
-            }
-        }
-        glPointSize(1);
-    
-    glPopMatrix();
 }
 
 void keyPress(unsigned char k, int xm, int ym)
 {
     if (k == 'r')
     {
-        computeVelocityFieldFromLocalAttraction();
+        computeVelocityFieldFromSinkhorn();
         advectField(1);
-
-        // overwrite sourceField with advectedField for next step
         for (int i = 0; i < RES; i++)
-        {
             for (int j = 0; j < RES; j++)
-            {
                 sourceField[i][j] = advectedField[i][j];
-            }
-        }
-
     }
 }
 

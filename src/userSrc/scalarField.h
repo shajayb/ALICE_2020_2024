@@ -667,7 +667,7 @@ public:
 
         computeIsocontours(threshold);
 
-        glColor3f(0, 0, 0);
+        glColor3f(1, 0, 0);
         if (draw)
             for (auto& segment : isolines)
             {
@@ -675,7 +675,7 @@ public:
                 drawLine(zVecToAliceVec(segment.first), zVecToAliceVec(segment.second));
                 glLineWidth(1);
             }
-
+        glColor3f(0, 0, 0);
 
 
     }
