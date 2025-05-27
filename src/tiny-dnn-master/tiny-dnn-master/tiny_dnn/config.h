@@ -6,11 +6,11 @@
     in the LICENSE file.
 */
 #pragma once
-
-#define TINY_DNN_USE_XSIMD false
-#define CNN_USE_DOUBLE 0
-#define TINY_DNN_USE_AVX 0
-#define TINY_DNN_USE_OMP 0
+//
+//#define TINY_DNN_USE_XSIMD false
+//#define CNN_USE_DOUBLE 0
+//#define TINY_DNN_USE_AVX 0
+//#define TINY_DNN_USE_OMP 0
 
 
 #include <cstddef>

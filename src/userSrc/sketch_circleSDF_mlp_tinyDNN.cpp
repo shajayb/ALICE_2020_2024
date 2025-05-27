@@ -4,13 +4,13 @@
 #define _MAIN_
 #ifdef _MAIN_
 
-
+#include <tiny_dnn/config.h>
+#include <tiny_dnn/tiny_dnn.h>
 
 #include "main.h"
 #include <vector>
 #include <cmath>
-#include <tiny_dnn/config.h>
-#include <tiny_dnn/tiny_dnn.h>
+
 
 #include <headers/zApp/include/zObjects.h>
 #include <headers/zApp/include/zFnSets.h>
@@ -18,6 +18,7 @@
 
 using namespace zSpace;
 using namespace tiny_dnn;
+using namespace tiny_dnn::activation;
 
 Alice::vec zVecToAliceVec(zVector& in)
 {
@@ -29,17 +30,17 @@ zVector AliceVecToZvec(Alice::vec& in)
     return zVector(in.x, in.y, in.z);
 }
 
-inline zVector zMax( zVector& a,  zVector& b)
+inline zVector zMax(zVector& a, zVector& b)
 {
     return zVector(std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z));
 }
 
-inline zVector zMin( zVector& a,  zVector& b)
+inline zVector zMin(zVector& a, zVector& b)
 {
     return zVector(std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z));
 }
 
-vector<zVector> loadPolygonFromCSV( std::string& filename)
+vector<zVector> loadPolygonFromCSV(std::string& filename)
 {
     vector<zVector> poly;
     poly.clear();
@@ -63,151 +64,139 @@ vector<zVector> loadPolygonFromCSV( std::string& filename)
     return poly;
 }
 
-
-inline float smin(float a, float b, float k)
+inline float polygonSDF( zVector& p,  std::vector<zVector>& poly)
 {
-    float h = std::max(k - fabs(a - b), 0.0f) / k;
-    return std::min(a, b) - h * h * k * 0.25f;
+    float minDist = 1e6;
+    int n = poly.size();
+    for (int i = 0; i < n; ++i)
+    {
+        zVector a = poly[i];
+        zVector b = poly[(i + 1) % n];
+        zVector ab = b - a;
+        zVector ap = p - a;
+        float t = std::clamp((ab * ap) / (ab * ab), 0.0f, 1.0f);
+        zVector proj = a + ab * t;
+        minDist = std::min(minDist, (p - proj).length());
+    }
+
+    // simple point-in-polygon (ray-casting)
+    int count = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        zVector a = poly[i];
+        zVector b = poly[(i + 1) % n];
+        if (((a.y > p.y) != (b.y > p.y)) &&
+            (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x))
+        {
+            count++;
+        }
+    }
+
+    return (count % 2 == 0) ? minDist : -minDist;
 }
 
-zModel model;
-std::vector<zVector> polygonPoints;  // GT polygon
-std::vector<float> sdfGT;            // GT SDF values
-std::vector<zVector> sdfCenters;
-std::vector<float> predictedRadii;
+//--------------------------------------------------------------
+std::vector<zVector> polygon;
+std::vector<tiny_dnn::vec_t> inputs;
+std::vector<tiny_dnn::vec_t> outputs;
 
-network<sequential> mlp;
-adagrad optimizer;
+tiny_dnn::network<tiny_dnn::sequential> net;
+bool trained = false;
 
-tensor_t inBatch = { {1.0f} };
-tensor_t gradOutput(1);
-
-int N_CIRCLES = 4;
-bool train = false;
-
-//network<sequential> buildMLP()
-//{
-//    network<sequential> net;
-//    net << fully_connected_layer(1, 64) << relu()
-//        << fully_connected_layer(64, 64) << relu()
-//        << fully_connected_layer(64, N_CIRCLES * 3);
-//    return net;
-//}
-
-//void decodeOutput( vec_t& out)
-//{
-//    sdfCenters.clear();
-//    predictedRadii.clear();
-//    for (int i = 0; i < N_CIRCLES; ++i)
-//    {
-//        sdfCenters.push_back(zVector(out[i * 3 + 0], out[i * 3 + 1], 0));
-//        predictedRadii.push_back(fabs(out[i * 3 + 2]));
-//    }
-//}
-//
-//void trainStep()
-//{
-//    vec_t input = { 1.0f };
-//    vec_t output = mlp.forward(input);
-//    decodeOutput(output);
-//
-//    float loss = 0.0f;
-//    float eps = 1e-3f;
-//
-//    gradOutput[0] = vec_t(output.size(), 0.0f);
-//
-//    for (int i = 0; i < polygonPoints.size(); ++i)
-//    {
-//        float basePred = blendCircleSDFs(polygonPoints[i]);
-//        float error = basePred - sdfGT[i];
-//        loss += error * error;
-//
-//        for (int j = 0; j < output.size(); ++j)
-//        {
-//            vec_t perturbed = output;
-//            perturbed[j] += eps;
-//            decodeOutput(perturbed);
-//            float newPred = blendCircleSDFs(polygonPoints[i]);
-//
-//            float dL = (newPred - basePred) / eps;
-//            gradOutput[0][j] += 2.0f * error * dL;
-//        }
-//
-//        decodeOutput(output); // reset
-//    }
-//
-//    std::cout << "Loss: " << loss << std::endl;
-//
-//    mlp.backward(inBatch, gradOutput);
-//    optimizer.update(mlp, 1);
-//}
-//
-//float blendCircleSDFs( zVector& pt)
-//{
-//    float d = (pt - sdfCenters[0]).length() - predictedRadii[0];
-//    for (int i = 1; i < sdfCenters.size(); i++)
-//    {
-//        float d_i = (pt - sdfCenters[i]).length() - predictedRadii[i];
-//        d = smin(d, d_i, 3.0f);
-//    }
-//    return d;
-//}
-//
-//void drawCircles()
-//{
-//    glColor3f(1, 0, 0);
-//    for (int i = 0; i < sdfCenters.size(); i++)
-//    {
-//        drawCircle(zVecToAliceVec(sdfCenters[i]), predictedRadii[i], 32);
-//    }
-//}
-
-
-// -----------------------------------
-
-
+//--------------------------------------------------------------
 void setup()
 {
-    mlp = buildMLP();
-
-    for (int i = 0; i < 64; i++)
-    {
-        float theta = i * TWO_PI / 64.0;
-        zVector pt(cos(theta) * 15, sin(theta) * 10, 0);
-        polygonPoints.push_back(pt);
-        sdfGT.push_back(0.0f);
-    }
+    // square polygon
+    polygon.clear();
+    polygon = loadPolygonFromCSV("data/polygon.txt");
 }
 
-void update(int value)
-{
-    if (train)
-    {
-        trainStep();
-    }
-}
+//--------------------------------------------------------------
+void update(int value) {}
 
+//--------------------------------------------------------------
 void draw()
 {
     backGround(0.9);
-    drawGrid(50);
+    drawGrid(20);
 
-    glColor3f(0, 0, 1);
-    for (auto& p : polygonPoints)
-        drawPoint(zVecToAliceVec(p));
+    // draw polygon
+    glColor3f(0, 0, 0);
+    for (int i = 0; i < polygon.size(); ++i)
+    {
+        drawLine(zVecToAliceVec(polygon[i]), zVecToAliceVec(polygon[(i + 1) % polygon.size()]));
+    }
 
-    drawCircles();
+    if (trained)
+    {
+        for (float x = -20; x <= 20; x += 1.0f)
+        {
+            for (float y = -20; y <= 20; y += 1.0f)
+            {
+                tiny_dnn::vec_t in = { x, y };
+                float sdf = net.predict(in)[0];
+                float r, g, b;
+                getJetColor(sdf / 10.0f, r, g, b);
+                glColor3f(r, g, b);
+                drawPoint(zVecToAliceVec(zVector(x, y, 0)));
+            }
+        }
+    }
 }
 
+//--------------------------------------------------------------
 void keyPress(unsigned char k, int xm, int ym)
 {
+    if (k == 'm')
+    {
+        inputs.clear();
+        outputs.clear();
+
+        for (float x = -20; x <= 20; x += 1.0f)
+        {
+            for (float y = -20; y <= 20; y += 1.0f)
+            {
+                zVector pt(x, y, 0);
+                float sdf = polygonSDF(pt, polygon);
+
+                inputs.push_back({ x, y });
+                outputs.push_back({ sdf });
+            }
+        }
+
+        std::cout << "Generated " << inputs.size() << " training samples.\n";
+    }
+
     if (k == 't')
     {
-        train = !train;
+        net = tiny_dnn::network<tiny_dnn::sequential>();
+        net << tiny_dnn::fully_connected_layer(2, 32)
+            << tiny_dnn::relu()
+            << tiny_dnn::fully_connected_layer(32, 32)
+            << tiny_dnn::relu()
+            << tiny_dnn::fully_connected_layer(32, 1);
+
+        tiny_dnn::adagrad optimizer;
+        net.train<tiny_dnn::mse>(optimizer, inputs, outputs, 16, 50);
+
+        trained = true;
+        std::cout << "MLP training complete.\n";
+    }
+
+    if (k == 'e')
+    {
+        std::ofstream out("data/sdf_samples.csv");
+        for (int i = 0; i < inputs.size(); i++)
+        {
+            out << inputs[i][0] << "," << inputs[i][1] << "," << outputs[i][0] << "\n";
+        }
+        out.close();
     }
 }
 
 void mousePress(int b, int state, int x, int y) {}
 void mouseMotion(int x, int y) {}
+
+
 
 #endif // _MAIN_
