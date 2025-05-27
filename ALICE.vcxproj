@@ -46,7 +46,7 @@
     <ClCompile Include="src\userSrc\sketch_CircleSDF_mlp_handCoded.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_circleSDF_mlp_tinyDNN.cpp" />
+    <ClCompile Include="src\userSrc\sketch_polygonSDF_mlp_tinyDNN.cpp" />
     <ClCompile Include="src\userSrc\Sketch_scalarAdvection.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>

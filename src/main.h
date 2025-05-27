@@ -381,46 +381,46 @@ void motionCallBack( int x, int y )
 
 //------------------------------------------------------------------------------- ENTRY POINT 
 
-//int main(int argc,char** argv)
-//{
-//	if (argc > 1)inFile = argv[1];
-//
-//	glutInit(&argc,argv);
-//	glutInitDisplayMode(GLUT_DOUBLE|GLUT_RGBA|GLUT_DEPTH);
-//	glutInitWindowSize(winW,winH);
-//	glutInitWindowPosition(winW * 0.5,winH * 0.5);
-//	glutCreateWindow("zViewer");
-//
-//	// register event methods ;
-//	glutDisplayFunc(drawCallBack); // register a drawing code 
-//	glutReshapeFunc(reshape); // register a reshape 
-//	glutMouseFunc(mousePressCallBack);
-//	glutMotionFunc(motionCallBack);
-//	glutIdleFunc(idle);//(NEW) calls our idle function
-//	glutTimerFunc(0,updateCallBack,0); // call update once in main
-//	glutKeyboardFunc( keyPressCallBack ); // register keypress function;
-//
-//	{
-//		glewInit();
-//
-//		if (glewIsSupported("GL_VERSION_2_0"))
-//			printf("Ready for OpenGL 2.0\n");
-//		else 
-//			printf("OpenGL 2.0 not supported\n");
-//	}
-//
-//	glEnable(GL_DEPTH_TEST);
-//	glEnable(GL_POINT_SMOOTH);
-//	glEnable(GL_BLEND);
-//	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-//
-//	{
-//		B = *new ButtonGroup(Alice::vec(50, 450, 0));
-//		setup();
-//	}
-//
-//	init_timer();
-//	glutMainLoop();
-//}
+int main(int argc,char** argv)
+{
+	if (argc > 1)inFile = argv[1];
+
+	glutInit(&argc,argv);
+	glutInitDisplayMode(GLUT_DOUBLE|GLUT_RGBA|GLUT_DEPTH);
+	glutInitWindowSize(winW,winH);
+	glutInitWindowPosition(winW * 0.5,winH * 0.5);
+	glutCreateWindow("zViewer");
+
+	// register event methods ;
+	glutDisplayFunc(drawCallBack); // register a drawing code 
+	glutReshapeFunc(reshape); // register a reshape 
+	glutMouseFunc(mousePressCallBack);
+	glutMotionFunc(motionCallBack);
+	glutIdleFunc(idle);//(NEW) calls our idle function
+	glutTimerFunc(0,updateCallBack,0); // call update once in main
+	glutKeyboardFunc( keyPressCallBack ); // register keypress function;
+
+	{
+		glewInit();
+
+		if (glewIsSupported("GL_VERSION_2_0"))
+			printf("Ready for OpenGL 2.0\n");
+		else 
+			printf("OpenGL 2.0 not supported\n");
+	}
+
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_POINT_SMOOTH);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	{
+		B = *new ButtonGroup(Alice::vec(50, 450, 0));
+		setup();
+	}
+
+	init_timer();
+	glutMainLoop();
+}
 
 #endif

@@ -30,6 +30,6 @@
     <ClCompile Include="src\userSrc\Sketch_scalarAdvection.cpp" />
     <ClCompile Include="src\userSrc\sketch_circleSDF_Fitter.cpp" />
     <ClCompile Include="src\userSrc\sketch_CircleSDF_mlp_handCoded.cpp" />
-    <ClCompile Include="src\userSrc\sketch_circleSDF_mlp_tinyDNN.cpp" />
+    <ClCompile Include="src\userSrc\sketch_polygonSDF_mlp_tinyDNN.cpp" />
   </ItemGroup>
 </Project>
