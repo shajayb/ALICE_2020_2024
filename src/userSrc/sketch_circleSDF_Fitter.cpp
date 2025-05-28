@@ -38,9 +38,9 @@ std::vector<float>predictedRadii;
 
 ScalarField2D myField;
 
-int numCircles = 12;
+int numCircles = 16;
 double thresholdValue = 0.0;
-double radius = 1.0;
+double radius = 8.0;
 double smoothK = 3.0;
 
 
@@ -98,7 +98,7 @@ inline float blendCircleSDFs(zVector& pt, std::vector<zVector>& centers, vector<
     for (int i = 1; i < centers.size(); i++)
     {
         float d_i = circleSDF(pt, centers[i], radii[i]);
-        d = smin(d, d_i, k);  // smooth union of signed distances
+        d = std::min(d, d_i);// smin(d, d_i, k);  // smooth union of signed distances
     }
 
     return d;
@@ -300,8 +300,8 @@ void optimiseCircleCenters(int iterations = 20, float step = 0.001f)
            // Update
           
            sdfCenters[c] = center - grad * step;
-            sdfCenters[c].x = std::clamp(sdfCenters[c].x, -50.0f, 50.0f);
-           sdfCenters[c].y = std::clamp(sdfCenters[c].y, -50.0f, 50.0f);
+           sdfCenters[c].x = std::clamp(sdfCenters[c].x, -50.0f, 50.0f);
+          sdfCenters[c].y = std::clamp(sdfCenters[c].y, -50.0f, 50.0f);
 
        }
 

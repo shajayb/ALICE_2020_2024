@@ -98,6 +98,12 @@ public:
 
     //----------------------------------------
 
+    float smin(float a, float b, float k)
+    {
+        float h = std::max(k - fabs(a - b), 0.0f) / k;
+        return std::min(a, b) - h * h * k * 0.25f;
+    }
+
     void addVoronoi(const std::vector<zVector>& sites )
     {
         for (int i = 0; i < RES; i++)
