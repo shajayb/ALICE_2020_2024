@@ -168,10 +168,11 @@ public:
         std::vector<zVector> centers(outputDim / 3);
         std::vector<float> radii(outputDim / 3);
 
+       
         auto out = forward(x);
         for (int i = 0; i < centers.size(); i++)
         {
-            zVector pt( out[i * 3 + 0], out[i * 3 + 1], 0);
+            zVector pt(out[i * 3 + 0], out[i * 3 + 1], 0);
             centers[i] = (isInsidePolygon(pt, polygon)) ? pt : fittedCenters[i];
             radii[i] = 8; // std::clamp(std::abs(out[i * 3 + 2]), 8.f, 8.f);
         }
@@ -195,15 +196,15 @@ public:
 
             for (int i = 0; i < centers.size(); i++)
             {
-                zVector pt (perturbedOut[i * 3 + 0], perturbedOut[i * 3 + 1], 0);
-               
+                zVector pt(perturbedOut[i * 3 + 0], perturbedOut[i * 3 + 1], 0);
+
                 cPert[i] = (isInsidePolygon(pt, polygon)) ? pt : fittedCenters[i];
 
                 rPert[i] = 8;//  std::clamp(std::abs(perturbedOut[i * 3 + 2]), 8.0f, 8.f);
             }
 
             float gradLoss = 0;
-            for (int s = 0; s < samplePts.size(); ++s)
+            /*for (int s = 0; s < samplePts.size(); ++s)
             {
                 float f = blendCircleSDFs(samplePts[s], centers, radii);
                 float fPert = blendCircleSDFs(samplePts[s], cPert, rPert);
@@ -211,18 +212,58 @@ public:
                 float err = f - gt;
                 loss += err * err;
                 gradLoss += 2 * err * (fPert - f) / eps;
+            }*/
+
+            // Compute original loss
+            float baseError = 0.0f;
+            for (int s = 0; s < samplePts.size(); ++s)
+            {
+                float f = blendCircleSDFs(samplePts[s], centers, radii);
+                float gt = sdfGT[s];
+                float err = f - gt;
+                baseError += err * err;
             }
+            loss += baseError;
+
+            // Compute perturbed loss (x_j + eps)
+            float errorPertPlus = 0.0f;
+            for (int s = 0; s < samplePts.size(); ++s)
+            {
+                float fPert = blendCircleSDFs(samplePts[s], cPert, rPert);
+                float gt = sdfGT[s];
+                float errPert = fPert - gt;
+                errorPertPlus += errPert * errPert;
+            }
+
+            // Compute perturbed loss (x_j - eps)
+            std::vector<float> perturbedInputMinus = x;
+            perturbedInputMinus[j] -= eps;
+            auto perturbedOutMinus = forward(perturbedInputMinus);
+            std::vector<zVector> cPertMinus(centers.size());
+            std::vector<float> rPertMinus(centers.size());
+            for (int i = 0; i < centers.size(); i++)
+            {
+                cPertMinus[i] = zVector(perturbedOutMinus[i * 3 + 0], perturbedOutMinus[i * 3 + 1], 0);
+                cPertMinus[i] = (isInsidePolygon(cPertMinus[i], polygon)) ? cPertMinus[i] : fittedCenters[i];
+                rPertMinus[i] = 8;// std::abs(perturbedOutMinus[i * 3 + 2]);
+            }
+            float errorPertMinus = 0.0f;
+            for (int s = 0; s < samplePts.size(); ++s)
+            {
+                float fPert = blendCircleSDFs(samplePts[s], cPertMinus, rPertMinus);
+                float gt = sdfGT[s];
+                float errPert = fPert - gt;
+                errorPertMinus += errPert * errPert;
+            }
+
+            // Central difference gradient
+            gradLoss = (errorPertPlus - errorPertMinus) / (2.0f * eps);
+
+
             gradOut[j] = gradLoss;
         }
 
-        // penalty for circle centers outside polygon
-        //for ( zVector& c : centers)
-        //{
-        //    if (!isInsidePolygon(c, polygon))
-        //    {
-        //        loss += 100000.0f; // strong penalty
-        //    }
-        //}
+     
 
         return loss;
     }
@@ -253,7 +294,7 @@ public:
 
 float polygonSDF(std::vector<zVector>& poly, zVector& p)
 {
-    float minDist = 1e6;
+   /* float minDist = 1e6;
     int N = poly.size();
     for (int i = 0; i < N; i++)
     {
@@ -279,7 +320,24 @@ float polygonSDF(std::vector<zVector>& poly, zVector& p)
     }
 
     float sign = (crossings % 2 == 0) ? 1.0f : -1.0f;
-    return minDist * sign;
+    return minDist * sign;*/
+
+    float minDist = 1e6f;
+    for (int i = 0; i < poly.size(); i++)
+    {
+        zVector a = poly[i];
+        zVector b = poly[(i + 1) % poly.size()];
+        zVector ab = b - a;
+        zVector ap = p - a;
+
+        float t = std::clamp((ap * ab) / (ab * ab), 0.0f, 1.0f);
+        zVector closest = a + ab * t;
+        float dist = p.distanceTo(closest);
+        minDist = std::min(minDist, dist);
+    }
+
+    bool inside = isInsidePolygon(p, poly);
+    return inside ? -minDist : minDist;
 }
 
 void computeSampleData()
@@ -290,7 +348,7 @@ void computeSampleData()
     {
         for (int j = -50; j <= 50; j += 5)
         {
-            
+
             zVector pt(i, j, 0);
 
             if (!isInsidePolygon(pt, polygon))continue;
@@ -310,9 +368,9 @@ bool drawSF = false;
 
 void trainCircleSDF()
 {
-    
+
     mlp = MLP(NUM_SDF * 3, 32, 3 * NUM_SDF);
-    
+
 }
 
 //---------------------------------
@@ -325,8 +383,8 @@ void setup()
 
     S.addSlider(&threshold, "iso");
     S.sliders[0].minVal = -1;
-   
-    
+
+
     glEnable(GL_LINE_SMOOTH);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -337,15 +395,15 @@ void draw()
 {
     backGround(0.9);
     drawGrid(50);
-   
+
     glDisable(GL_LINE_STIPPLE);
     glColor3f(1, 0, 0);
     glLineWidth(5);
     glBegin(GL_LINE_LOOP);
-    for (int i = 0; i < polygon.size()-1; i++)
+    for (int i = 0; i < polygon.size() - 1; i++)
     {
-        
-        drawLine(zVecToAliceVec(polygon[i]), zVecToAliceVec(polygon[i+1]));
+
+        drawLine(zVecToAliceVec(polygon[i]), zVecToAliceVec(polygon[i + 1]));
     }
     glEnd();
     glLineWidth(1);
@@ -359,7 +417,7 @@ void draw()
     for (int i = 0; i < samplePts.size() - 1; i++)
     {
 
-        drawPoint( zVecToAliceVec(samplePts[i]) );
+        drawPoint(zVecToAliceVec(samplePts[i]));
     }
 
     if (drawSF)
@@ -370,9 +428,9 @@ void draw()
 }
 
 
-void update( int val)
+void update(int val)
 {
-    if (!train)return; 
+    if (!train)return;
 
     keyPress('n', 0, 0);
 }
@@ -387,7 +445,7 @@ void keyPress(unsigned char k, int xm, int ym)
 
     if (k == 'n')
     {
-        //for (int epoch = 0; epoch < 50; ++epoch)
+        for (int epoch = 0; epoch < 150; ++epoch)
         {
             float loss = mlp.computeLossAndGradient(input, polygon, gradOut);
             mlp.backward(gradOut, 0.001);
@@ -405,12 +463,12 @@ void keyPress(unsigned char k, int xm, int ym)
         //fittedCenters.clear();
         ///fittedRadii.clear();
 
-        for (int i = 0; i < 5; i++)
+        /*for (int i = 0; i < 5; i++)
         {
             int n = ofRandom(0, samplePts.size() - 1);
             fittedCenters.push_back(samplePts[n]);
             fittedRadii.push_back(15);
-        }
+        }*/
 
         for (int i = 0, n = 0; i < sf.RES; i++, n++)
         {

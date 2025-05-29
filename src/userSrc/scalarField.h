@@ -10,16 +10,17 @@
 
 using namespace zSpace;
 
-inline zVector zMax(const zVector& a, const zVector& b)
-{
-    return zVector(std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z));
-}
-
-inline float smin(float a, float b, float k)
-{
-    float h = std::max(k - fabs(a - b), 0.0f) / k;
-    return std::min(a, b) - h * h * k * 0.25f;
-}
+//these two functiosn must be turned on for sketch_circleSDF_fitter.cpp
+//inline zVector zMax(const zVector& a, const zVector& b)
+//{
+//    return zVector(std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z));
+//}
+//
+//inline float smin(float a, float b, float k)
+//{
+//    float h = std::max(k - fabs(a - b), 0.0f) / k;
+//    return std::min(a, b) - h * h * k * 0.25f;
+//}
 
 inline void getJetColor(float value, float& r, float& g, float& b)
 {

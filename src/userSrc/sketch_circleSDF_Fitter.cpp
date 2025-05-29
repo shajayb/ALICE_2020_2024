@@ -22,8 +22,17 @@ zVector AliceVecToZvec(Alice::vec& in)
     return zVector(in.x, in.y, in.z);
 }
 
+inline zVector zMax(zVector& a, zVector& b)
+{
+    return zVector(std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z));
+}
 
-#include "scalarField.h"
+inline zVector zMin(zVector& a, zVector& b)
+{
+    return zVector(std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z));
+}
+
+#include "scalarField.h" //// two functiosn must be turned on in scalarfIELD.H for sketch_circleSDF_fitter.cpp
 
 
 //inline float smin(float a, float b, float k)
@@ -42,6 +51,15 @@ int numCircles = 16;
 double thresholdValue = 0.0;
 double radius = 8.0;
 double smoothK = 3.0;
+
+// ----------------- MLP 
+//std::vector<zVector> samplePts;
+std::vector<float> sdfGT;
+std::vector<zVector> fittedCenters;
+std::vector<float> fittedRadii;
+#define NUM_SDF 16
+//std::vector<zVector> polygon;
+double threshold;
 
 
 //-------------------------------
@@ -84,7 +102,7 @@ inline float blendCircleSDFs( zVector& pt,  std::vector<zVector>& centers, float
     for (int i = 1; i < centers.size(); i++)
     {
         float d_i = circleSDF(pt, centers[i], r);
-        d = smin(d, d_i, k);  // smooth union of signed distances
+        d = std::min(d,d_i);// smin(d, d_i, k);  // smooth union of signed distances
     }
 
     return d;
@@ -130,8 +148,6 @@ bool isInsidePolygon( zVector& p,  std::vector<zVector>& poly)
 
     return (windingNumber != 0);
 }
-
-
 float polygonSDF( zVector& pt,  std::vector<zVector>& poly)
 {
     float minDist = 1e6f;
@@ -158,54 +174,12 @@ float polygonSDF( zVector& pt,  std::vector<zVector>& poly)
 //-------------------------------
 
 std::vector<zVector> candidatePts;
-void fitSDFToPolygon()
+void initilaiseCircleCenters()
 {
     sdfCenters.clear();
-    candidatePts.clear();
-    
-
-    // Sample a grid of points across bounding box
-    for (float x = -50; x <= 50; x += 2.0f)
-    {
-        for (float y = -50; y <= 50; y += 2.0f)
-        {
-            zVector pt(x, y, 0);
-            if (isInsidePolygon(pt, polygon))
-            {
-                candidatePts.push_back(pt);
-            }
-        }
-    }
-
-    cout << candidatePts.size() << " candidatePts size" << endl;
-
-    for (int c = 0; c < numCircles; c++)
-    {
-        float maxResidual = -1e6;
-        zVector bestPt;
+    for (int c = 0; c < numCircles; c++) sdfCenters.push_back(zVector(0, 0, 0));
 
 
-     
-        for (auto& pt : candidatePts)
-        {
-            float pred = blendCircleSDFs(pt, sdfCenters, radius, smoothK);
-            float actual = polygonSDF(pt, polygon);
-
-            float residual = fabs(pred - actual);
-
-            if (residual > maxResidual)
-            {
-                maxResidual = residual;
-                bestPt = pt;
-            }
-        }
-
-
-       // sdfCenters.push_back(bestPt);
-        sdfCenters.push_back( zVector(0,0,0) );
-    }
-
-    printf(" NSDFC %i, NC %i \n", sdfCenters.size(), numCircles);
 }
 
 void buildScalarField()
@@ -215,7 +189,7 @@ void buildScalarField()
         for (int j = 0; j < ScalarField2D::RES; j++)
         {
             zVector pt = myField.gridPoints[i][j];
-            float d = blendCircleSDFs(pt, sdfCenters, radius, smoothK);
+            float d = polygonSDF(pt, polygon); ; // blendCircleSDFs(pt, sdfCenters, radius, smoothK);// polygonSDF(pt,polygon);
             myField.field[i][j] = d; // signed SDF directly
         }
     }
@@ -228,12 +202,17 @@ std::vector<zVector> trainingSamples;
 void samplePoints()
 {
     trainingSamples.clear();
-    for (float x = -50; x <= 50; x += 2.0f)
+    
+    for (float x = -50; x <= 50; x += 5.0f)
     {
-        for (float y = -50; y <= 50; y += 2.0f)
+        for (float y = -50; y <= 50; y += 5.0f)
         {
             zVector pt(x, y, 0);
-            if (isInsidePolygon(pt, polygon)) trainingSamples.push_back(pt);
+            if (isInsidePolygon(pt, polygon))
+            {
+                trainingSamples.push_back(pt);
+                sdfGT.push_back(polygonSDF(pt, polygon));//mlp
+            }
         }
     }
 
@@ -273,10 +252,11 @@ void optimiseCircleCenters(int iterations = 20, float step = 0.001f)
                std::vector<zVector> testCenters = sdfCenters;
                testCenters[c] = center + dir;
                float E_plus = 0;
+               int i = 0;
                for (auto& pt : trainingSamples)
                {
                    float pred = blendCircleSDFs(pt, testCenters, radius, smoothK);
-                   float actual = polygonSDF(pt, polygon);
+                   float actual = sdfGT[i++]; //polygonSDF(pt, polygon);
                    
                    float diff = pred - actual;
                    E_plus += diff * diff;
@@ -284,10 +264,11 @@ void optimiseCircleCenters(int iterations = 20, float step = 0.001f)
 
                testCenters[c] = center - dir;
                float E_minus = 0;
+               i = 0;
                for (auto& pt : trainingSamples)
                {
                    float pred = blendCircleSDFs(pt, testCenters, radius, smoothK);
-                   float actual = polygonSDF(pt, polygon);
+                   float actual = sdfGT[i++];// polygonSDF(pt, polygon);
                    float diff = pred - actual;
                    E_minus += diff * diff;
                }
@@ -310,7 +291,221 @@ void optimiseCircleCenters(int iterations = 20, float step = 0.001f)
     }
 }
 
-// ----------------- MLP 
+
+
+class MLP
+{
+public:
+    int inputDim, hiddenDim, outputDim;
+    std::vector<std::vector<float>> W1, W2;
+    std::vector<float> b1, b2;
+    std::vector<float> input, hidden, output;
+    float prevLoss = 0 ;
+
+    MLP()
+    {
+
+    }
+    MLP(int inDim, int hDim, int outDim)
+        : inputDim(inDim), hiddenDim(hDim), outputDim(outDim)
+    {
+        W1.resize(hiddenDim, std::vector<float>(inputDim));
+        W2.resize(outputDim, std::vector<float>(hiddenDim));
+        b1.resize(hiddenDim);
+        b2.resize(outputDim);
+        input.resize(inputDim);
+        hidden.resize(hiddenDim);
+        output.resize(outputDim);
+
+        std::default_random_engine eng;
+        std::normal_distribution<float> dist(0.0, 0.1);
+
+        for (auto& row : W1) for (auto& val : row) val = dist(eng);
+        for (auto& row : W2) for (auto& val : row) val = dist(eng);
+    }
+
+    std::vector<float> forward(const std::vector<float>& x)
+    {
+        input = x;
+        for (int i = 0; i < hiddenDim; ++i)
+        {
+            hidden[i] = b1[i];
+            for (int j = 0; j < inputDim; ++j)
+                hidden[i] += W1[i][j] * input[j];
+            hidden[i] = std::tanh(hidden[i]);
+        }
+        for (int i = 0; i < outputDim; ++i)
+        {
+            output[i] = b2[i];
+            for (int j = 0; j < hiddenDim; ++j)
+                output[i] += W2[i][j] * hidden[j];
+        }
+        return output;
+    }
+
+    // see : https://g.co/gemini/share/4882f6e2724c for the explanation of the correction
+    float computeLossAndGradient(const std::vector<float>& x, std::vector<zVector>& polygon, std::vector<float>& gradOut)
+    {
+        // Make sure gradOut is correctly sized
+        gradOut.assign(outputDim, 0.0f);
+
+        // 1. Forward pass to get MLP's predicted parameters
+        auto raw_mlp_output = forward(x); // This is the output before clamping or other transformations
+
+        std::vector<zVector> centers(NUM_SDF);
+        std::vector<float> radii(NUM_SDF);
+
+        // Interpret MLP output as circle parameters.
+        // Apply any necessary transformations (e.g., clamping for robustness, but ideally learned)
+        // For now, let's keep the radius fixed as in your problem statement
+        for (int i = 0; i < NUM_SDF; i++)
+        {
+            // For x, y, consider if they need to be clamped or scaled.
+            // For now, using raw output for gradient calculation, but apply insidePolygon check for the actual usage.
+            zVector pt(raw_mlp_output[i * 2 + 0], raw_mlp_output[i * 2 + 1], 0);
+
+            // This check is for visualization/usage, the gradient should ideally flow through if possible.
+            // For now, we'll keep it as is, but it can create discontinuous gradients.
+            centers[i] = (isInsidePolygon(pt, polygon)) ? pt : fittedCenters[i]; // fittedCenters should ideally be initialized better
+            radii[i] = radius; // Fixed radius as per your current setup. If MLP should learn, remove this.
+        }
+
+        // Save for visualization
+        fittedCenters = centers;
+        fittedRadii = radii;
+
+        float totalLoss = 0.0f;
+
+        // 2. Calculate the loss based on the predicted circle parameters
+        // This part iterates through sample points and calculates the SDF loss.
+        // We also need to compute the gradient of this loss with respect to each circle parameter (center.x, center.y, radius).
+
+        // Numerical gradient of the *SDF blending function* with respect to circle parameters
+        // This is the crucial part for the MLP's backprop.
+        float eps_param = 0.01f; // Epsilon for numerical gradient of SDF w.r.t. circle params
+
+        for (int s = 0; s < trainingSamples.size(); ++s)
+        {
+            zVector current_sample_pt = trainingSamples[s];
+            float gt_sdf = sdfGT[s];
+
+            // Calculate the predicted blended SDF with current parameters
+            float predicted_sdf = blendCircleSDFs(current_sample_pt, centers, radii, smoothK);
+            float error = predicted_sdf - gt_sdf;
+            totalLoss += error * error; // Sum of squared errors
+
+            // Now, compute the gradient of `error*error` (or `predicted_sdf`) with respect to each
+            // of the *output parameters* (x, y for centers, and radius) that come from the MLP.
+
+            for (int i = 0; i < NUM_SDF; ++i) // For each circle
+            {
+                // Gradient with respect to center.x of circle i
+                std::vector<zVector> centers_plus_x = centers;
+                centers_plus_x[i].x += eps_param;
+                float predicted_sdf_plus_x = blendCircleSDFs(current_sample_pt, centers_plus_x, radii, smoothK);
+                float grad_sdf_cx = (predicted_sdf_plus_x - predicted_sdf) / eps_param;
+                // Chain rule: dLoss/d_param = dLoss/d_predicted_sdf * d_predicted_sdf/d_param
+                // dLoss/d_predicted_sdf = 2 * (predicted_sdf - gt_sdf)
+                gradOut[i * 2 + 0] += 2 * error * grad_sdf_cx; // Accumulate gradient for output x
+
+                // Gradient with respect to center.y of circle i
+                std::vector<zVector> centers_plus_y = centers;
+                centers_plus_y[i].y += eps_param;
+                float predicted_sdf_plus_y = blendCircleSDFs(current_sample_pt, centers_plus_y, radii, smoothK);
+                float grad_sdf_cy = (predicted_sdf_plus_y - predicted_sdf) / eps_param;
+                gradOut[i * 2 + 1] += 2 * error * grad_sdf_cy; // Accumulate gradient for output y
+
+                // Gradient with respect to radius of circle i (if it were learned by MLP)
+                // Currently, radius is fixed. If MLP were to learn radius, uncomment and adapt:
+                /*
+                std::vector<float> radii_plus_r = radii;
+                radii_plus_r[i] += eps_param;
+                float predicted_sdf_plus_r = blendCircleSDFs(current_sample_pt, centers, radii_plus_r, smoothK);
+                float grad_sdf_r = (predicted_sdf_plus_r - predicted_sdf) / eps_param;
+                gradOut[i * 3 + 2] += 2 * error * grad_sdf_r; // Accumulate gradient for output radius
+                */
+            }
+        }
+
+        // Normalize gradients by sample count for average gradient
+        for (float& g : gradOut) 
+        {
+            g /= trainingSamples.size();
+
+        }
+
+        return totalLoss / trainingSamples.size(); // Return average loss
+    }
+
+
+    // see : https://g.co/gemini/share/4882f6e2724c for the explanation of the correction
+    void backward(const std::vector<float>& gradOut, float lr)
+    {
+        // gradOut: dLoss/d_output_raw_mlp_output (e.g., dLoss/d(raw_x), dLoss/d(raw_y), dLoss/d(raw_radius))
+
+        // Gradients for output layer weights (W2) and biases (b2)
+        // dLoss/dW2_ji = dLoss/d_output_j * d_output_j/dW2_ji = dLoss/d_output_j * hidden_i
+        // dLoss/db2_j = dLoss/d_output_j * d_output_j/db2_j = dLoss/d_output_j * 1
+
+        std::vector<float> gradHidden_raw(hiddenDim); // Gradient before tanh activation
+
+        for (int j = 0; j < outputDim; ++j) // Iterate through output neurons
+        {
+            // Update W2 (output_dim x hidden_dim)
+            for (int i = 0; i < hiddenDim; ++i) // Iterate through hidden neurons
+            {
+                W2[j][i] -= lr * gradOut[j] * hidden[i];
+            }
+
+            // Update b2 (output_dim)
+            b2[j] -= lr * gradOut[j];
+
+            // Accumulate gradient for hidden layer (to backpropagate further)
+            // This is dLoss/d_raw_hidden_i contribution from this output neuron j
+            for (int i = 0; i < hiddenDim; ++i)
+            {
+                gradHidden_raw[i] += gradOut[j] * W2[j][i]; // Chain rule: dLoss/d_hidden_raw_i = sum(dLoss/d_output_j * d_output_j/d_hidden_raw_i)
+                // d_output_j/d_hidden_raw_i = W2_ji * d_hidden_j/d_raw_hidden_j (tanh derivative)
+                // NO, this is dLoss/d_output_j * W2_ji. The tanh derivative comes next.
+            }
+        }
+
+        // Now, backpropagate through the tanh activation for the hidden layer
+        // dLoss/d_hidden_i = dLoss/d_raw_hidden_i * d(tanh(raw_hidden_i))/d_raw_hidden_i
+        // d(tanh(x))/dx = 1 - tanh(x)^2 = 1 - hidden[i]^2
+        std::vector<float> gradHidden_activated(hiddenDim);
+        for (int i = 0; i < hiddenDim; ++i)
+        {
+            gradHidden_activated[i] = gradHidden_raw[i] * (1.0f - hidden[i] * hidden[i]);
+        }
+
+
+        // Gradients for hidden layer weights (W1) and biases (b1)
+        // dLoss/dW1_ij = dLoss/d_hidden_i * input_j
+        // dLoss/db1_i = dLoss/d_hidden_i * 1
+        for (int i = 0; i < hiddenDim; ++i) // Iterate through hidden neurons
+        {
+            // Update W1 (hidden_dim x input_dim)
+            for (int j = 0; j < inputDim; ++j) // Iterate through input neurons
+            {
+                W1[i][j] -= lr * gradHidden_activated[i] * input[j];
+            }
+
+            // Update b1 (hidden_dim)
+            b1[i] -= lr * gradHidden_activated[i];
+        }
+    }
+};
+
+
+
+
+bool train = false;
+std::vector<float> input(numCircles * 2, 0.0f);
+std::vector<float> gradOut;
+MLP mlp;
+ScalarField2D sf;
+
 
 
 //-------------------------------
@@ -331,7 +526,7 @@ void drawCircles()
     glColor3f(0, 0, 1);
     for (auto& c : sdfCenters)
     {
-        drawCircle(zVecToAliceVec(c), .5/*radius*/, 32);
+        drawCircle(zVecToAliceVec(c), radius * 0.5, 32);
     }
 }
 
@@ -341,7 +536,7 @@ void drawCircles()
 void setup()
 {
     loadPolygonFromCSV("data/polygon.txt");
-    fitSDFToPolygon();       // initial greedy placement
+    initilaiseCircleCenters();       // initial greedy placement
     samplePoints();          // prepare training set
     optimiseCircleCenters(); // run gradient descent
     buildScalarField();      // update field
@@ -362,6 +557,9 @@ bool opt = false;
 void update(int value)
 {
     if(opt)optimiseCircleCenters();
+   
+    if (train)keyPress('n', 0, 0);
+    
     buildScalarField();
 }
 
@@ -373,9 +571,12 @@ void draw()
     drawPolygon();
     drawCircles();
 
-    glPointSize(5);
+    /*glPointSize(5);
     for (auto& pt : candidatePts)drawPoint(zVecToAliceVec(pt));
-    glPointSize(1);
+    glPointSize(1);*/
+    //mlp
+    glColor3f(1, 0, 0);
+    for (auto& pt : fittedCenters)drawCircle(zVecToAliceVec(pt), radius*0.5, 32);
   
     myField.drawFieldPoints();
     
@@ -389,16 +590,28 @@ void keyPress(unsigned char k, int xm, int ym)
   
     if (k == 'r')
     {
-        /*loadPolygonFromCSV("data/polygon.csv");
-        fitSDFToPolygon();
-        buildScalarField();*/
-
-       // optimiseCircleCenters();
         opt = !opt; 
+        train = false;// mlp off
     }
-    if (k == 'e')
+    ////
+
+    if (k == 't')
     {
-        myField.exportOrderedContoursAsCSV("data/contours.csv");
+        mlp = MLP(numCircles * 2, NUM_SDF * 16, 2 * numCircles);
+        train = !train;
+        opt = false;// GD optimiser off
+    }
+
+    if (k == 'n')
+    {
+        //for (int epoch = 0; epoch < 250; ++epoch)
+        {
+
+            float loss = mlp.computeLossAndGradient(input, polygon, gradOut);
+            mlp.backward(gradOut, 0.01);
+           // input = mlp.forward(input);
+            std::cout << "Epoch " << ", Loss: " << loss << std::endl;
+        }
     }
 }
 
