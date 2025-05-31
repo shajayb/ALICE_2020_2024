@@ -101,14 +101,14 @@ void draw()
         }
 
 
-        field1.addVoronoi(rbfCenters);
-      //  field1.addOrientedBoxSDF(zVector(-5, -5, 0), zVector(12,6, 0), angleRadians);
+        //field1.addVoronoi(rbfCenters);
+      field1.addOrientedBoxSDF(zVector(-5, -5, 0), zVector(12,6, 0), angleRadians);
 
        /*field2.addCircleSDF({ zVector(-15,0,0) } , 25);
        field2.addCircleSDF({ zVector(15,0,0) }, 25);
        field2.addCircleSDF({ zVector(0,15,0) }, 25);
        field2.addCircleSDF({ zVector(0,-15,0) },25);*/
-       // field2.addCircleSDFs(rbfCenters, 2);
+       field2.addCircleSDFs(rbfCenters, 2);
 
       // field1.addOrientedBoxSDF(zVector(-0, 0, 0), zVector(12, 12, 0), 0 * 3.1415926f / 180.0f);
       // field2.addOrientedBoxSDF(zVector(-0, 0, 0), zVector(20, 10, 0), 30 * 3.1415926f / 180.0f);
@@ -129,19 +129,25 @@ void draw()
        initialized = true;
     }
 
-    if (showField1)
+    //if (showField1)
     {
-        glColor3f(0.0, 0.0, 1.0);  // blue
-        field1.drawFieldPoints();
-        field1.drawIsocontours(isoThresh);
-       // field1.getOrderedContours();
+        glPushMatrix();
+        glTranslatef(100, 0, 0);
+            glColor3f(0.0, 0.0, 1.0);  // blue
+            field1.drawFieldPoints();
+            field1.drawIsocontours(isoThresh);
+           // field1.getOrderedContours();
+        glPopMatrix();
     }
 
-    if (showField2)
+   // if (showField2)
     {
-        glColor3f(1.0, 0.0, 0.0);  // red
-        field2.drawFieldPoints();
-        field2.drawIsocontours(isoThresh);
+        glPushMatrix();
+        glTranslatef(-100, 0, 0);
+            glColor3f(1.0, 0.0, 0.0);  // red
+            field2.drawFieldPoints();
+            field2.drawIsocontours(isoThresh);
+        glPopMatrix();
     }
 
 
@@ -263,7 +269,7 @@ void keyPress(unsigned char k, int xm, int ym)
         field1.addVoronoi(rbfCenters);
 
         field2.clearField();
-        field2.addCircleSDFs(rbfCenters, 2);
+       // field2.addCircleSDFs(rbfCenters, 2);
        
     }
 

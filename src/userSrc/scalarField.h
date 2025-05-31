@@ -60,7 +60,7 @@ public:
 
   
 
-    static const int RES = 100;
+    static const int RES = 200;
     int div = 2; 
 
     zVector gridPoints[RES][RES];

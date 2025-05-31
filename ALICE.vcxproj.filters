@@ -32,5 +32,6 @@
     <ClCompile Include="src\userSrc\sketch_CircleSDF_mlp_handCoded.cpp" />
     <ClCompile Include="src\userSrc\sketch_polygonSDF_mlp_tinyDNN.cpp" />
     <ClCompile Include="src\userSrc\sketch_polygonSDF_to_CircleSDF_customMLP_Loss.cpp" />
+    <ClCompile Include="src\userSrc\sketch_MLP_SDF_latentspace.cpp" />
   </ItemGroup>
 </Project>
