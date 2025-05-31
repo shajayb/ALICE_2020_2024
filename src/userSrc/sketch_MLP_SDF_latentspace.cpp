@@ -35,7 +35,7 @@ Alice::vec zVecToAliceVec(zVector& in)
     return Alice::vec(in.x, in.y, in.z);
 }
 
-constexpr int RES = 128;
+constexpr int RES = 32;
 constexpr int latentDim = 8;
 constexpr int inputDim = RES * RES;
 
@@ -68,24 +68,112 @@ vec_t generateCircleSDF(float radius)
     return sdf;
 }
 
+//void generateTrainingSet()
+//{
+//    sdfStack.clear();
+//    for (float r = 4.0f; r <= 12.0f; r += 1.5f)
+//    {
+//        sdfStack.push_back(generateCircleSDF(r));
+//    }
+//}
+
+#include "scalarField.h"
+
 void generateTrainingSet()
 {
     sdfStack.clear();
-    for (float r = 4.0f; r <= 12.0f; r += 1.5f)
+
+    for (int i = 0; i < 150; ++i)
     {
-        sdfStack.push_back(generateCircleSDF(r));
+        ScalarField2D F;
+
+        int choice = rand() % 5;
+
+        if (choice == 0) // Single circle
+        {
+            zVector c(ofRandom(-20, 20), ofRandom(-20, 20), 0);
+            float r = ofRandom(5, 15);
+            F.addCircleSDF(c, r);
+        }
+
+        else if (choice == 1) // Two blended circles
+        {
+            ScalarField2D A, B;
+            A.addCircleSDF(zVector(ofRandom(-25, 0), ofRandom(-10, 10), 0), ofRandom(5, 10));
+            B.addCircleSDF(zVector(ofRandom(0, 25), ofRandom(-10, 10), 0), ofRandom(5, 10));
+            A.blendWith(B, 10.0f, SMinMode::EXPONENTIAL);
+            F = A;
+        }
+
+        else if (choice == 2) // Box subtracting circle
+        {
+            ScalarField2D box, circle;
+            box.addOrientedBoxSDF(zVector(0, 0, 0), zVector(10, 15, 0), ofRandom(-PI / 4.0, PI / 4.0));
+            circle.addCircleSDF(zVector(ofRandom(-10, 10), ofRandom(-10, 10), 0), ofRandom(5, 10));
+            box.subtract(circle);
+            F = box;
+        }
+
+        else if (choice == 3) // Voronoi
+        {
+            std::vector<zVector> pts;
+            for (int k = 0; k < 6; k++)
+            {
+                pts.push_back(zVector(ofRandom(-30, 30), ofRandom(-30, 30), 0));
+            }
+            F.addVoronoi(pts);
+        }
+
+        else if (choice == 4) // Three-way union (mixed types)
+        {
+            ScalarField2D A, B, C;
+            A.addOrientedBoxSDF(zVector(ofRandom(-15, 0), ofRandom(-15, 15), 0), zVector(5, 8, 0), ofRandom(0, PI / 3.0));
+            B.addCircleSDF(zVector(ofRandom(0, 15), ofRandom(-15, 15), 0), ofRandom(5, 10));
+            C.addOrientedBoxSDF(zVector(ofRandom(-5, 5), ofRandom(-15, 15), 0), zVector(3, 12, 0), ofRandom(-PI / 6.0, PI / 6.0));
+            A.unionWith(B);
+            A.unionWith(C);
+            F = A;
+        }
+
+        // Convert to vec_t for training
+        vec_t sdf;
+        float dx = static_cast<float>(F.RES - 1) / (RES - 1);
+        float dy = static_cast<float>(F.RES - 1) / (RES - 1);
+
+        for (int j = 0; j < RES; ++j)
+        {
+            for (int i = 0; i < RES; ++i)
+            {
+                int sx = static_cast<int>(i * dx);
+                int sy = static_cast<int>(j * dy);
+
+                sx = std::clamp(sx, 0, F.RES - 1);
+                sy = std::clamp(sy, 0, F.RES - 1);
+
+                sdf.push_back(static_cast<float_t>(F.field[sx][sy]));
+            }
+        }
+
+
+        sdfStack.push_back(sdf);
     }
 }
+
 
 void buildNetwork()
 {
     autoencoder = network<sequential>(); // clear old layers
 
     autoencoder
-        << fully_connected_layer(inputDim, 64) << relu()
-        << fully_connected_layer(64, latentDim)
-        << fully_connected_layer(latentDim, 64) << relu()
-        << fully_connected_layer(64, inputDim);
+        << fully_connected_layer(inputDim, 256) << relu()
+        << fully_connected_layer(256, 128) << relu()
+        << fully_connected_layer(128, latentDim)
+        << fully_connected_layer(latentDim, 128) << relu()
+        << fully_connected_layer(128, 256) << relu()
+        << fully_connected_layer(256, inputDim);
+
+
+
 }
 
 
@@ -96,6 +184,7 @@ void decodeCurrent()
 
 void drawSDFGrid(const vec_t& sdf, zVector offset)
 {
+    
     for (int y = 0; y < RES; ++y)
     {
         for (int x = 0; x < RES; ++x)
@@ -113,7 +202,7 @@ void drawSDFGrid(const vec_t& sdf, zVector offset)
 
 void trainOneEpoch()
 {
-    adagrad optimizer;
+    adam optimizer;
     std::vector<vec_t> inputs, targets;
 
     for (auto& sdf : sdfStack)
@@ -155,6 +244,8 @@ void setup()
 
 void update(int value) {}
 
+ScalarField2D F;
+
 void draw()
 {
     backGround(0.9);
@@ -163,6 +254,11 @@ void draw()
     drawSDFGrid(sdfStack[curSample], zVector(0, 0, 0));            // Input SDF
     drawSDFGrid(reconstructedSDF, zVector(RES + 4, 0, 0));         // Reconstruction
 }
+
+vec_t latentVec(latentDim, 0.0f); // starts at origin
+int latentStepIndex = 0;
+float latentStepSize = 0.1f;
+
 
 void keyPress(unsigned char k, int xm, int ym)
 {
@@ -185,6 +281,15 @@ void keyPress(unsigned char k, int xm, int ym)
         std::cout << "Latent: ";
         for (auto& v : latent) printf(" %.3f", v);
         std::cout << "\n";
+    }
+
+    if (k == 'l') // walk through latent dimensions
+    {
+        latentVec[latentStepIndex] += latentStepSize;
+        reconstructedSDF = autoencoder.predict(latentVec);
+
+        std::cout << "Latent dim " << latentStepIndex << " += " << latentStepSize << "\n";
+        latentStepIndex = (latentStepIndex + 1) % latentDim;  // move to next dim next time
     }
 }
 

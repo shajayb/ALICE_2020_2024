@@ -22,20 +22,20 @@ inline float smin(float a, float b, float k)
     return std::min(a, b) - h * h * k * 0.25f;
 }
 
-inline void getJetColor(float value, float& r, float& g, float& b)
-{
-    // Clamp input to [-1, 1]
-    value = std::clamp(value, -1.0f, 1.0f);
-
-    // Normalize to [0, 1]
-    float normalized = (value + 1.0f) * 0.5f;
-
-    float fourValue = 4.0f * normalized;
-
-    r = std::clamp(std::min(fourValue - 1.5f, -fourValue + 4.5f), 0.0f, 1.0f);
-    g = std::clamp(std::min(fourValue - 0.5f, -fourValue + 3.5f), 0.0f, 1.0f);
-    b = std::clamp(std::min(fourValue + 0.5f, -fourValue + 2.5f), 0.0f, 1.0f);
-}
+//inline void getJetColor(float value, float& r, float& g, float& b)
+//{
+//    // Clamp input to [-1, 1]
+//    value = std::clamp(value, -1.0f, 1.0f);
+//
+//    // Normalize to [0, 1]
+//    float normalized = (value + 1.0f) * 0.5f;
+//
+//    float fourValue = 4.0f * normalized;
+//
+//    r = std::clamp(std::min(fourValue - 1.5f, -fourValue + 4.5f), 0.0f, 1.0f);
+//    g = std::clamp(std::min(fourValue - 0.5f, -fourValue + 3.5f), 0.0f, 1.0f);
+//    b = std::clamp(std::min(fourValue + 0.5f, -fourValue + 2.5f), 0.0f, 1.0f);
+//}
 
 
 enum class SMinMode
