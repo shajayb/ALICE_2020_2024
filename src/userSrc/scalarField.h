@@ -136,6 +136,7 @@ public:
             }
         }
 
+        rescaleFieldToRange(-1, 1);
     }
 
     void addCircleSDF(zVector center, float radius , bool invertDistance = true)
@@ -189,6 +190,30 @@ public:
         rescaleFieldToRange(-1, 1);//closedfields rescale to -1,1
     }
 
+    void addCircleSDFs(vector<zVector> rbfCenters, float radius = 2.0)
+    {
+        for (int i = 0; i < RES; i++)
+        {
+            for (int j = 0; j < RES; j++)
+            {
+                zVector p = gridPoints[i][j];
+                float d = p.distanceTo(rbfCenters[0]);
+                // Signed distance: negative inside, zero on boundary, positive outside
+                float val = (d > radius) ? d : d - radius;
+
+                for (int i = 1; i < rbfCenters.size();  i++)
+                {
+                    float d_i = p.distanceTo(rbfCenters[i]);
+                    val = (d_i > radius) ? d_i : d_i - radius;
+                    d = std::min(d, d_i);
+                }
+
+                field[i][j] = d;
+            }
+        }
+
+        rescaleFieldToRange(-1, 1);
+    }
     //----------------------------------------
     
     void unionWith(const ScalarField2D& other)

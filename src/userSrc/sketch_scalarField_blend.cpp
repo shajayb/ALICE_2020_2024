@@ -45,6 +45,7 @@ bool isPointInsideBB( zVector& pt,  zVector& minBB,  zVector& maxBB)
 void setup()
 {
     S.addSlider(&isoThresh, "threshold");// make a slider control for the variable called width;
+    S.sliders[0].minVal = -1;
     S.sliders[0].maxVal = 1;
 
     S.addSlider(&smoothness, "smooth");// make a slider control for the variable called width;
@@ -94,8 +95,8 @@ void draw()
                 float x = -12 + i * step;
                 float y = -12 + j * step;
 
-               //rbfCenters.push_back( zVector(i, j, 0) );
-                rbfCenters.push_back( zVector(ofRandom(-5, 5), ofRandom(-5, 5), 0) );
+               rbfCenters.push_back( zVector(i, j, 0) );
+               // rbfCenters.push_back( zVector(ofRandom(-5, 5), ofRandom(-5, 5), 0) );
             }
         }
 
@@ -107,7 +108,7 @@ void draw()
        field2.addCircleSDF({ zVector(15,0,0) }, 25);
        field2.addCircleSDF({ zVector(0,15,0) }, 25);
        field2.addCircleSDF({ zVector(0,-15,0) },25);*/
-        field2.addRadialFunctions(rbfCenters, 2);
+       // field2.addCircleSDFs(rbfCenters, 2);
 
       // field1.addOrientedBoxSDF(zVector(-0, 0, 0), zVector(12, 12, 0), 0 * 3.1415926f / 180.0f);
       // field2.addOrientedBoxSDF(zVector(-0, 0, 0), zVector(20, 10, 0), 30 * 3.1415926f / 180.0f);
@@ -262,7 +263,7 @@ void keyPress(unsigned char k, int xm, int ym)
         field1.addVoronoi(rbfCenters);
 
         field2.clearField();
-        field2.addRadialFunctions(rbfCenters, 2);
+        field2.addCircleSDFs(rbfCenters, 2);
        
     }
 

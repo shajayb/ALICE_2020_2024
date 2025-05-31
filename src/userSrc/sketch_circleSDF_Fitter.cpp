@@ -90,12 +90,12 @@ void loadPolygonFromCSV(const std::string& filename)
 //-------------------------------
 // Circle SDF Blending
 //-------------------------------
-inline float circleSDF( zVector& pt, zVector& center, float r)
+inline float circleSDF(zVector& pt, zVector& center, float r)
 {
     return pt.distanceTo(zVector(center)) - r; // signed: negative inside, 0 on boundary, positive outside
 }
 
-inline float blendCircleSDFs( zVector& pt,  std::vector<zVector>& centers, float r, float k)
+inline float blendCircleSDFs(zVector& pt, std::vector<zVector>& centers, float r, float k)
 {
     if (centers.empty()) return 1e6f;
 
@@ -103,13 +103,13 @@ inline float blendCircleSDFs( zVector& pt,  std::vector<zVector>& centers, float
     for (int i = 1; i < centers.size(); i++)
     {
         float d_i = circleSDF(pt, centers[i], r);
-        d =  smin(d, d_i, k);  //std::min(d,d_i) smooth union of signed distances
+        d = smin(d, d_i, k);  //std::min(d,d_i) smooth union of signed distances
     }
 
     return d;
 }
 
-inline float blendCircleSDFs(zVector& pt, std::vector<zVector>& centers, vector<float> &radii, float k)
+inline float blendCircleSDFs(zVector& pt, std::vector<zVector>& centers, vector<float>& radii, float k)
 {
     if (centers.empty()) return 1e6f;
 
@@ -117,20 +117,20 @@ inline float blendCircleSDFs(zVector& pt, std::vector<zVector>& centers, vector<
     for (int i = 1; i < centers.size(); i++)
     {
         float d_i = circleSDF(pt, centers[i], radii[i]);
-        d =  smin(d, d_i, k);  // std::min(d, d_i);//smooth union of signed distances
+        d = smin(d, d_i, k);  // std::min(d, d_i);//smooth union of signed distances
     }
 
     return d;
 }
 
-bool isInsidePolygon( zVector& p,  std::vector<zVector>& poly)
+bool isInsidePolygon(zVector& p, std::vector<zVector>& poly)
 {
     int windingNumber = 0;
 
     for (int i = 0; i < poly.size(); i++)
     {
-         zVector& a = poly[i];
-         zVector& b = poly[(i + 1) % poly.size()];
+        zVector& a = poly[i];
+        zVector& b = poly[(i + 1) % poly.size()];
 
         if (a.y <= p.y)
         {
@@ -147,7 +147,7 @@ bool isInsidePolygon( zVector& p,  std::vector<zVector>& poly)
     return (windingNumber != 0);
 }
 
-float polygonSDF( zVector& pt,  std::vector<zVector>& poly)
+float polygonSDF(zVector& pt, std::vector<zVector>& poly)
 {
     float minDist = 1e6f;
     for (int i = 0; i < poly.size(); i++)
@@ -178,7 +178,7 @@ void initilaiseCircleCenters()
     for (int c = 0; c < numCircles; c++) sdfCenters.push_back(zVector(0, 0, 0));
 }
 
-void buildScalarField( int opt = 1 )
+void buildScalarField(int opt = 1)
 {
     myField.clearField();
     for (int i = 0; i < ScalarField2D::RES; i++)
@@ -186,7 +186,7 @@ void buildScalarField( int opt = 1 )
         for (int j = 0; j < ScalarField2D::RES; j++)
         {
             zVector pt = myField.gridPoints[i][j];
-            float d = (opt == 1 ) ? polygonSDF(pt, polygon) : blendCircleSDFs(pt, sdfCenters, radius, smoothK);// polygonSDF(pt,polygon);
+            float d = (opt == 1) ? polygonSDF(pt, polygon) : blendCircleSDFs(pt, sdfCenters, radius, smoothK);// polygonSDF(pt,polygon);
             myField.field[i][j] = d; // signed SDF directly
         }
     }
@@ -199,7 +199,7 @@ std::vector<zVector> trainingSamples;
 void samplePoints()
 {
     trainingSamples.clear();
-    
+
     for (float x = -50; x <= 50; x += 5.0f)
     {
         for (float y = -50; y <= 50; y += 5.0f)
@@ -233,55 +233,55 @@ void optimiseCircleCenters(int iterations = 20, float step = 0.001f)
 {
     const float eps = 1e-3f;
 
-   //for (int it = 0; it < iterations; it++)
+    //for (int it = 0; it < iterations; it++)
     {
-       for (int c = 0; c < sdfCenters.size(); c++)
-       {
-           zVector center = sdfCenters[c];
-           zVector grad(0, 0, 0);
+        for (int c = 0; c < sdfCenters.size(); c++)
+        {
+            zVector center = sdfCenters[c];
+            zVector grad(0, 0, 0);
 
-           for (int d = 0; d < 2; d++)
-           {
-               zVector dir(0, 0, 0);
-               if (d == 0) dir.x = eps;
-               if (d == 1) dir.y = eps;
+            for (int d = 0; d < 2; d++)
+            {
+                zVector dir(0, 0, 0);
+                if (d == 0) dir.x = eps;
+                if (d == 1) dir.y = eps;
 
-               std::vector<zVector> testCenters = sdfCenters;
-               testCenters[c] = center + dir;
-               float E_plus = 0;
-               int i = 0;
-               for (auto& pt : trainingSamples)
-               {
-                   float pred = blendCircleSDFs(pt, testCenters, radius, smoothK);
-                   float actual = sdfGT[i++]; //polygonSDF(pt, polygon);
-                   
-                   float diff = pred - actual;
-                   E_plus += diff * diff;
-               }
+                std::vector<zVector> testCenters = sdfCenters;
+                testCenters[c] = center + dir;
+                float E_plus = 0;
+                int i = 0;
+                for (auto& pt : trainingSamples)
+                {
+                    float pred = blendCircleSDFs(pt, testCenters, radius, smoothK);
+                    float actual = sdfGT[i++]; //polygonSDF(pt, polygon);
 
-               testCenters[c] = center - dir;
-               float E_minus = 0;
-               i = 0;
-               for (auto& pt : trainingSamples)
-               {
-                   float pred = blendCircleSDFs(pt, testCenters, radius, smoothK);
-                   float actual = sdfGT[i++];// polygonSDF(pt, polygon);
-                   float diff = pred - actual;
-                   E_minus += diff * diff;
-               }
+                    float diff = pred - actual;
+                    E_plus += diff * diff;
+                }
 
-               float g = (E_plus - E_minus) / (2 * eps);
-               if (d == 0) grad.x = g;
-               if (d == 1) grad.y = g;
-           }
+                testCenters[c] = center - dir;
+                float E_minus = 0;
+                i = 0;
+                for (auto& pt : trainingSamples)
+                {
+                    float pred = blendCircleSDFs(pt, testCenters, radius, smoothK);
+                    float actual = sdfGT[i++];// polygonSDF(pt, polygon);
+                    float diff = pred - actual;
+                    E_minus += diff * diff;
+                }
 
-           // Update
-          
-           sdfCenters[c] = center - grad * step;
-           sdfCenters[c].x = std::clamp(sdfCenters[c].x, -50.0f, 50.0f);
-          sdfCenters[c].y = std::clamp(sdfCenters[c].y, -50.0f, 50.0f);
+                float g = (E_plus - E_minus) / (2 * eps);
+                if (d == 0) grad.x = g;
+                if (d == 1) grad.y = g;
+            }
 
-       }
+            // Update
+
+            sdfCenters[c] = center - grad * step;
+            sdfCenters[c].x = std::clamp(sdfCenters[c].x, -50.0f, 50.0f);
+            sdfCenters[c].y = std::clamp(sdfCenters[c].y, -50.0f, 50.0f);
+
+        }
 
 
         std::cout << "Iteration " << " error: " << computeTotalError() << std::endl;
@@ -570,15 +570,15 @@ public:
                 gradient.x = grad_sdf_cx;
                 gradient.y = grad_sdf_cy;
 
-                glColor3f(0.5,0, 0.5);
+                glColor3f(0.5, 0, 0.5);
                 drawLine(zVecToAliceVec(current_sample_pt), zVecToAliceVec(current_sample_pt + gradient * 2));
             }
 
             glColor3f(0, 0.8, 0);
             zVector zPoint = current_sample_pt + zVector(0, 0, 1) * (error * error) * 0.05;
-            
+
             drawLine(zVecToAliceVec(current_sample_pt), zVecToAliceVec(zPoint));
-            
+
         }
 
         // Normalize gradients by sample count for average gradient
@@ -742,8 +742,8 @@ public:
                     float r, g, b;
                     getJetColor(val, r, g, b);
 
-                    (val > 0.9) ? glColor3f(r, g, b): glColor3f(0.8, 0.8, 0.8);
-                    
+                    (val > 0.9) ? glColor3f(r, g, b) : glColor3f(0.8, 0.8, 0.8);
+
                     drawLine(zVecToAliceVec(nodePositions[l][i]), zVecToAliceVec(nodePositions[l + 1][j]));
                 }
             }
@@ -759,7 +759,7 @@ public:
                 float r, g, b;
                 getJetColor(act, r, g, b);
                 //glColor3f(r, g, b);
-                glColor3f(0,0,0);
+                glColor3f(0, 0, 0);
 
                 drawCircle(zVecToAliceVec(nodePositions[l][i]), nodeRadius, 12);
             }
@@ -770,7 +770,7 @@ public:
 
 
 
-};  
+};
 
 
 
@@ -809,7 +809,7 @@ void drawCircles()
     glColor3f(0, 0, 1);
     for (auto& c : sdfCenters)
     {
-        drawCircle(zVecToAliceVec(c), radius , 32);
+        drawCircle(zVecToAliceVec(c), radius, 32);
         drawPoint(zVecToAliceVec(c));
     }
 }
@@ -836,7 +836,7 @@ void setup()
     S.addSlider(&smoothK, "k");
     S.sliders[2].maxVal = 10;
 
-    B = * new ButtonGroup(Alice::vec(50, 800, 0));
+    B = *new ButtonGroup(Alice::vec(50, 800, 0));
     B.addButton(&vizField, "field");
 
     // --- MLP Initialization (Properly done ONCE here) ---
@@ -910,27 +910,27 @@ void draw()
     glPointSize(1);*/
     //mlp
     glColor3f(1, 0, 0);
-    for (auto& pt : fittedCenters)drawCircle(zVecToAliceVec(pt), radius*0.5, 32);
-  
+    for (auto& pt : fittedCenters)drawCircle(zVecToAliceVec(pt), radius * 0.5, 32);
+
     glPushMatrix();
     //glTranslatef(100, 100, 0);
-        if (vizField)myField.drawFieldPoints();
+    if (vizField)myField.drawFieldPoints();
     glPopMatrix();
 
-    mlp.visualize(zVector(50,500,0),300,600);
-   
+    mlp.visualize(zVector(50, 500, 0), 300, 600);
+
     //
     buildScalarField(0);
 
     glPushMatrix();
     glTranslatef(100, 0, 0);
-        drawPolygon();
-        myField.drawIsocontours(thresholdValue, true);
-        if (vizField)myField.drawFieldPoints();
-        drawCircles();
+    drawPolygon();
+    myField.drawIsocontours(thresholdValue, true);
+    if (vizField)myField.drawFieldPoints();
+    drawCircles();
     glPopMatrix();
 
- 
+
 }
 
 void keyPress(unsigned char k, int xm, int ym)
