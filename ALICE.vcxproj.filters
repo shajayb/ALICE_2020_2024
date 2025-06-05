@@ -14,6 +14,7 @@
       <Filter>MVC</Filter>
     </ClInclude>
     <ClInclude Include="src\userSrc\scalarField.h" />
+    <ClInclude Include="src\userSrc\genericMLP.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="MVC">
@@ -33,5 +34,6 @@
     <ClCompile Include="src\userSrc\sketch_polygonSDF_mlp_tinyDNN.cpp" />
     <ClCompile Include="src\userSrc\sketch_polygonSDF_to_CircleSDF_customMLP_Loss.cpp" />
     <ClCompile Include="src\userSrc\sketch_MLP_SDF_latentspace.cpp" />
+    <ClCompile Include="src\userSrc\sketch_mlp_generic_circleFitter.cpp" />
   </ItemGroup>
 </Project>

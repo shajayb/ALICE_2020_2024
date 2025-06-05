@@ -1,4 +1,4 @@
-#define _MAIN_
+﻿#define _MAIN_
 #ifdef _MAIN_
 
 #include <tiny_dnn/config.h>
@@ -79,11 +79,135 @@ vec_t generateCircleSDF(float radius)
 
 #include "scalarField.h"
 
+#include <vector>
+#include <string>
+#include <cmath>
+#include <algorithm>
+#include "tiny_dnn/tiny_dnn.h"
+
+using namespace tiny_dnn;
+
+class FeedForwardNN
+{
+public:
+    struct Layer
+    {
+        std::vector<std::vector<float>> weights; // [out][in]
+        std::vector<float> biases;               // [out]
+        std::string activation;                  // "tanh", "relu", "linear"
+    };
+
+    std::vector<Layer> layers;
+
+    FeedForwardNN() {}
+
+    void addLayer(const std::vector<std::vector<float>>& W,
+        const std::vector<float>& b,
+        const std::string& activation)
+    {
+        Layer layer;
+        layer.weights = W;
+        layer.biases = b;
+        layer.activation = activation;
+        layers.push_back(layer);
+    }
+
+    vec_t forward(const vec_t& input) const
+    {
+        vec_t x = input;
+
+        for (const Layer& layer : layers)
+        {
+            vec_t y(layer.biases.size());
+
+            for (size_t i = 0; i < layer.biases.size(); ++i)
+            {
+                float sum = layer.biases[i];
+                for (size_t j = 0; j < x.size(); ++j)
+                {
+                    sum += layer.weights[i][j] * x[j];
+                }
+
+                if (layer.activation == "tanh")      y[i] = std::tanh(sum);
+                else if (layer.activation == "relu") y[i] = std::max(0.0f, sum);
+                else                                 y[i] = sum; // linear
+            }
+
+            x = y; // propagate
+        }
+
+        return x;
+    }
+};
+
+
+
+
+FeedForwardNN convertTinyDNNToFFNN(network<sequential>& net, int startIndex, int endIndex)
+{
+    FeedForwardNN ffnn;
+
+    for (int i = startIndex; i <= endIndex; ++i)
+    {
+        layer* l = net[i];
+
+        if (l->layer_type() == "fully-connected")
+        {
+            auto* fc = dynamic_cast<fully_connected_layer*>(l);
+            if (!fc) continue;
+
+            auto wts = fc->weights();
+            vec_t& flatWeights = *wts[0];
+            vec_t& biases = *wts[1];
+
+            int outDim = fc->out_size();
+            int inDim = fc->in_size();
+
+            std::vector<std::vector<float>> W(outDim, std::vector<float>(inDim));
+            std::vector<float> b(outDim);
+
+            for (int o = 0; o < outDim; ++o)
+            {
+                for (int j = 0; j < inDim; ++j)
+                {
+                    W[o][j] = flatWeights[o * inDim + j];
+                }
+                b[o] = biases[o];
+            }
+
+        
+
+
+            // Default to linear; activation will be applied in next loop if present
+            ffnn.addLayer(W, b, "linear");
+        }
+        else if (l->layer_type() == "tanh-activation" || l->layer_type() == "relu-activation")
+        {
+
+            if (ffnn.layers.empty())
+            {
+                std::cerr << "⚠️ Activation layer found without preceding FC.\n";
+                continue;
+            }
+
+            cout << l->layer_type() << endl;
+            ffnn.layers.back().activation = (l->layer_type() == "tanh-activation") ? "tanh" : "relu";
+        }
+        else
+        {
+            std::cerr << "⚠️ Skipping unsupported layer type: " << l->layer_type() << "\n";
+        }
+    }
+
+    return ffnn;
+}
+
+
 void generateTrainingSet()
 {
     sdfStack.clear();
 
-    for (int i = 0; i < 150; ++i)
+    for (int i = 0; i < 50; ++i)
     {
         ScalarField2D F;
 
@@ -165,14 +289,18 @@ void buildNetwork()
     autoencoder = network<sequential>(); // clear old layers
 
     autoencoder
-        << fully_connected_layer(inputDim, 256) << relu()
-        << fully_connected_layer(256, 128) << relu()
+        << fully_connected_layer(inputDim, 256) 
+        << relu()
+        << fully_connected_layer(256, 128) 
+        << relu()
         << fully_connected_layer(128, latentDim)
-        << fully_connected_layer(latentDim, 128) << relu()
-        << fully_connected_layer(128, 256) << relu()
+        << fully_connected_layer(latentDim, 128) 
+        << relu()
+        << fully_connected_layer(128, 256) 
+        << relu()
         << fully_connected_layer(256, inputDim);
 
-
+    //tiny_dnn::activation::tanh()
 
 }
 
@@ -182,9 +310,150 @@ void decodeCurrent()
     reconstructedSDF = autoencoder.predict(sdfStack[curSample]);
 }
 
+network<sequential> buildEncoderFromAutoencoder(network<sequential>& autoencoder)
+{
+    network<sequential> encoder;
+
+    for (size_t i = 0; i <= 4 && i < autoencoder.depth(); ++i)
+    {
+        layer* orig = autoencoder[i];
+
+        if (orig->layer_type() == "fully-connected")
+        {
+            auto* fc = dynamic_cast<fully_connected_layer*>(orig);
+            if (!fc) continue;
+
+            auto* new_fc = new fully_connected_layer(fc->in_size(), fc->out_size());
+
+            // Copy weights and biases
+            auto orig_w = fc->weights();
+            auto new_w = new_fc->weights();
+            for (size_t k = 0; k < orig_w.size(); ++k)
+            {
+                if (orig_w[k] && new_w[k])
+                    *new_w[k] = *orig_w[k];
+
+                printf(" %.2f , %.2f \n", *orig_w[k], *new_w[k]);
+            }
+
+            encoder << *new_fc;
+        }
+        else if (orig->layer_type() == "tanh-activation")
+        {
+            encoder << tanh_layer();
+        }
+        else if (orig->layer_type() == "relu-activation")
+        {
+            encoder << relu_layer();
+        }
+        else if (orig->layer_type() == "sigmoid-activation")
+        {
+            encoder << sigmoid_layer();
+        }
+        else
+        {
+            std::cerr << "Skipping unsupported encoder layer type: " << orig->layer_type() << std::endl;
+        }
+    }
+
+    return encoder;
+}
+
+network<sequential> buildDecoderFromAutoencoder(network<sequential>& autoencoder)
+{
+    network<sequential> decoder;
+
+    layer* orig = autoencoder[5];
+    if (!(orig->in_size() == latentDim))return decoder;
+
+    for (size_t i = 5; i < autoencoder.depth(); ++i)
+    {
+        layer* orig = autoencoder[i];
+
+        // Identify layer type
+        if (orig->layer_type() == "fully-connected")
+        {
+            auto* fc = dynamic_cast<fully_connected_layer*>(orig);
+            if (!fc) continue;
+
+            // Clone layer
+            auto* new_fc = new fully_connected_layer(fc->in_size(), fc->out_size());
+
+            // Copy weights
+            auto orig_w = fc->weights();
+            auto new_w = new_fc->weights();
+
+            for (size_t k = 0; k < orig_w.size(); ++k)
+            {
+                if (orig_w[k] && new_w[k])
+                {
+                    *new_w[k] = *orig_w[k];
+                }
+            }
+          
+
+           decoder << *new_fc;
+        
+        }
+        else if (orig->layer_type() == "tanh-activation")
+        {
+            decoder << tanh_layer();
+        }
+        else if (orig->layer_type() == "relu-activation")
+        {
+            decoder << relu_layer();
+        }
+        else if (orig->layer_type() == "sigmoid-activation")
+        {
+            decoder << sigmoid_layer();
+        }
+        else
+        {
+            std::cerr << "Skipping unsupported decoder layer type: " << orig->layer_type() << std::endl;
+        }
+    }
+
+    return decoder;
+}
+
+void printNetworkSummary(network<sequential>& autoencoder, const FeedForwardNN& encoderNN, const FeedForwardNN& decoderNN)
+{
+    std::cout << "\n========== NETWORK STRUCTURE SUMMARY ==========\n";
+
+    std::cout << "\n--- TinyDNN Autoencoder Layers ---\n";
+    for (size_t i = 0; i < autoencoder.depth(); ++i)
+    {
+        layer* l = autoencoder[i];
+        std::cout << "  [Layer " << i << "] type: " << l->layer_type()
+            << " | in: " << l->in_data_size()
+            << " | out: " << l->out_data_size() << "\n";
+    }
+
+    std::cout << "\n--- FeedForwardNN Encoder ---\n";
+    for (size_t i = 0; i < encoderNN.layers.size(); ++i)
+    {
+        const auto& layer = encoderNN.layers[i];
+        std::cout << "  [Layer " << i << "] in: " << layer.weights[0].size()
+            << " | out: " << layer.weights.size()
+            << " | activation: " << layer.activation << "\n";
+    }
+
+    std::cout << "\n--- FeedForwardNN Decoder ---\n";
+    for (size_t i = 0; i < decoderNN.layers.size(); ++i)
+    {
+        const auto& layer = decoderNN.layers[i];
+        std::cout << "  [Layer " << i << "] in: " << layer.weights[0].size()
+            << " | out: " << layer.weights.size()
+            << " | activation: " << layer.activation << "\n";
+    }
+
+    std::cout << "===============================================\n";
+}
+
+
 void drawSDFGrid(const vec_t& sdf, zVector offset)
 {
-    
+
     for (int y = 0; y < RES; ++y)
     {
         for (int x = 0; x < RES; ++x)
@@ -266,6 +535,73 @@ void keyPress(unsigned char k, int xm, int ym)
     {
         curSample = (curSample + 1) % sdfStack.size();
         decodeCurrent();
+
+        FeedForwardNN encoderNN = convertTinyDNNToFFNN(autoencoder, 0, 4);
+        FeedForwardNN decoderNN = convertTinyDNNToFFNN(autoencoder, 5, autoencoder.depth() - 1);
+
+        vec_t inputVec = sdfStack[curSample];
+        vec_t latent = encoderNN.forward(inputVec);
+        vec_t output = decoderNN.forward(latent);
+        
+        // autoencoder.predict(sdfStack[curSample]); versus decoderNN.forward(latent);
+
+        vec_t ref = autoencoder.predict(inputVec);
+
+        float mse = 0.0f;
+        for (int i = 0; i < output.size(); ++i)
+        {
+            float diff = output[i] - ref[i];
+            mse += diff * diff;
+        }
+        mse /= output.size();
+
+        std::cout << "🔍 MSE between decoderNN and autoencoder: " << mse << std::endl;
+
+        //FeedForwardNN encoderNN = convertTinyDNNToFFNN(autoencoder, 0, 4);
+       // FeedForwardNN decoderNN = convertTinyDNNToFFNN(autoencoder, 5, autoencoder.depth() - 1);
+
+        printNetworkSummary(autoencoder, encoderNN, decoderNN);
+
+
+       // 
+        //layer* orig = autoencoder[0];
+        //std::cout << "input: " << orig->in_data_size() << " (" << orig->in_data_shape() << ")\n";
+        //std::cout << "output: " << orig->out_data_size() << " (" << orig->out_data_shape() << ")\n";
+
+        //if (orig->layer_type() == "fully-connected")
+        //{
+        //    auto orig_w = orig->weights();
+
+        //    if (orig_w.size() >= 2)
+        //    {
+        //        vec_t& weights = *orig_w[0];  // weights matrix (flattened)
+        //        vec_t& biases = *orig_w[1];  // bias vector
+
+        //        cout << weights.size() << ":" << biases.size() << endl;
+
+        //        std::cout << "Weights:\n";
+        //        /*for (size_t i = 0; i < weights.size(); ++i)
+        //        {
+        //            printf("  w[%03zu] = %.8f\n", i, weights[i]);
+        //        }
+
+        //        std::cout << "Biases:\n";
+        //        for (size_t i = 0; i < biases.size(); ++i)
+        //        {
+        //            printf("  b[%03zu] = %.8f\n", i, biases[i]);
+        //        }*/
+        //    }
+        //    else
+        //    {
+        //        std::cerr << "⚠️ Layer has fewer than 2 trainable parameters.\n";
+        //    }
+        //}
+        //else
+        //{
+        //    cout << orig->layer_type() << endl;
+        //}
+
+     
     }
 
     if (k == 't')

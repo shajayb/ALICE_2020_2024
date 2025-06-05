@@ -31,6 +31,7 @@
     <ClInclude Include="src\alice\MODEL.h" />
     <ClInclude Include="src\alice\object.h" />
     <ClInclude Include="src\alice\utilities.h" />
+    <ClInclude Include="src\userSrc\genericMLP.h" />
     <ClInclude Include="src\userSrc\scalarField.h" />
   </ItemGroup>
   <ItemGroup>
@@ -46,7 +47,10 @@
     <ClCompile Include="src\userSrc\sketch_CircleSDF_mlp_handCoded.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_MLP_SDF_latentspace.cpp" />
+    <ClCompile Include="src\userSrc\sketch_mlp_generic_circleFitter.cpp" />
+    <ClCompile Include="src\userSrc\sketch_MLP_SDF_latentspace.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="src\userSrc\sketch_polygonSDF_mlp_tinyDNN.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
