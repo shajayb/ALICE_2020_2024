@@ -12,20 +12,19 @@ public:
     int inputDim, outputDim;
     std::vector<int> hiddenDims;
 
-    std::vector<std::vector<std::vector<float>>> W; // W[layer][neuron][input]
-    std::vector<std::vector<float>> B;              // B[layer][neuron]
+    std::vector<std::vector<std::vector<float>>> W;
+    std::vector<std::vector<float>> B;
 
     std::function<float(float)> activation = relu;
     std::function<float(float)> activation_deriv = relu_deriv;
-
-    std::function<float(float, float)> loss = mse_loss;
-    std::function<float(float, float)> dloss = mse_dloss;
 
     MLP(int inDim, int outDim, const std::vector<int>& hidden)
         : inputDim(inDim), outputDim(outDim), hiddenDims(hidden)
     {
         initializeWeights();
     }
+
+    virtual ~MLP() {}
 
     void initializeWeights()
     {
@@ -41,23 +40,18 @@ public:
 
         for (size_t l = 0; l < layers.size() - 1; ++l)
         {
-            int inL = layers[l];
-            int outL = layers[l + 1];
-
-            std::vector<std::vector<float>> wLayer(outL, std::vector<float>(inL));
-            std::vector<float> bLayer(outL);
+            int inL = layers[l], outL = layers[l + 1];
+            W.emplace_back(outL, std::vector<float>(inL));
+            B.emplace_back(outL);
 
             for (int j = 0; j < outL; ++j)
             {
                 for (int i = 0; i < inL; ++i)
                 {
-                    wLayer[j][i] = dist(gen);
+                    W[l][j][i] = dist(gen);
                 }
-                bLayer[j] = dist(gen);
+                B[l][j] = dist(gen);
             }
-
-            W.push_back(wLayer);
-            B.push_back(bLayer);
         }
     }
 
@@ -76,7 +70,6 @@ public:
                 {
                     sum += W[l][j][i] * layerIn[i];
                 }
-
                 layerOut[j] = (l == W.size() - 1) ? sum : activation(sum);
             }
 
@@ -95,8 +88,7 @@ public:
 
         for (size_t l = 0; l < W.size(); ++l)
         {
-            std::vector<float> z(W[l].size());
-            std::vector<float> a(W[l].size());
+            std::vector<float> z(W[l].size()), a(W[l].size());
 
             for (size_t j = 0; j < W[l].size(); ++j)
             {
@@ -115,12 +107,7 @@ public:
         }
 
         std::vector<std::vector<float>> dA(W.size());
-        dA.back() = std::vector<float>(outputDim);
-
-        for (int j = 0; j < outputDim; ++j)
-        {
-            dA.back()[j] = dloss(A.back()[j], target[j]);
-        }
+        dA.back() = computeGradient(A.back(), target);
 
         for (int l = (int)W.size() - 1; l >= 0; --l)
         {
@@ -130,8 +117,7 @@ public:
             std::vector<float> dZ(outDim);
             for (int j = 0; j < outDim; ++j)
             {
-                dZ[j] = (l == W.size() - 1) ? dA[l][j]
-                    : dA[l][j] * activation_deriv(Z[l][j]);
+                dZ[j] = (l == W.size() - 1) ? dA[l][j] : dA[l][j] * activation_deriv(Z[l][j]);
             }
 
             std::vector<float> dAprev(inDim, 0.0f);
@@ -145,21 +131,30 @@ public:
                 B[l][j] -= learningRate * dZ[j];
             }
 
-            if (l > 0)
-            {
-                dA[l - 1] = dAprev;
-            }
+            if (l > 0) dA[l - 1] = dAprev;
         }
     }
 
-    float computeLoss(const std::vector<float>& output, const std::vector<float>& target)
+    virtual float computeLoss(const std::vector<float>& output, const std::vector<float>& target)
     {
         float total = 0.0f;
         for (size_t i = 0; i < output.size(); ++i)
         {
-            total += loss(output[i], target[i]);
+            float e = output[i] - target[i];
+            total += e * e;
         }
         return total / output.size();
+    }
+
+    virtual std::vector<float> computeGradient(const std::vector<float>& output,
+        const std::vector<float>& target)
+    {
+        std::vector<float> grad(output.size());
+        for (size_t i = 0; i < output.size(); ++i)
+        {
+            grad[i] = 2.0f * (output[i] - target[i]);
+        }
+        return grad;
     }
 
     void train(const std::vector<std::vector<float>>& inputs,
@@ -174,7 +169,7 @@ public:
 
             for (size_t i = 0; i < inputs.size(); ++i)
             {
-                std::vector<float> out = forward(inputs[i]);
+                auto out = forward(inputs[i]);
                 epochLoss += computeLoss(out, targets[i]);
                 backward(inputs[i], targets[i], learningRate);
             }
@@ -188,25 +183,6 @@ public:
         }
     }
 
-    // --- Default ReLU + MSE ---
-    static float relu(float x)
-    {
-        return std::max(0.0f, x);
-    }
-
-    static float relu_deriv(float x)
-    {
-        return x > 0 ? 1.0f : 0.0f;
-    }
-
-    static float mse_loss(float pred, float target)
-    {
-        float e = pred - target;
-        return e * e;
-    }
-
-    static float mse_dloss(float pred, float target)
-    {
-        return 2.0f * (pred - target);
-    }
+    static float relu(float x) { return std::max(0.0f, x); }
+    static float relu_deriv(float x) { return x > 0 ? 1.0f : 0.0f; }
 };
