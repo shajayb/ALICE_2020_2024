@@ -35,5 +35,6 @@
     <ClCompile Include="src\userSrc\sketch_polygonSDF_to_CircleSDF_customMLP_Loss.cpp" />
     <ClCompile Include="src\userSrc\sketch_MLP_SDF_latentspace.cpp" />
     <ClCompile Include="src\userSrc\sketch_mlp_generic_circleFitter.cpp" />
+    <ClCompile Include="src\userSrc\sketch_circleSDF_Fitter_mlpOnly.cpp" />
   </ItemGroup>
 </Project>

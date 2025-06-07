@@ -44,10 +44,15 @@
     <ClCompile Include="src\userSrc\sketch_circleSDF_Fitter.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_circleSDF_Fitter_mlpOnly.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="src\userSrc\sketch_CircleSDF_mlp_handCoded.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_mlp_generic_circleFitter.cpp" />
+    <ClCompile Include="src\userSrc\sketch_mlp_generic_circleFitter.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="src\userSrc\sketch_MLP_SDF_latentspace.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
