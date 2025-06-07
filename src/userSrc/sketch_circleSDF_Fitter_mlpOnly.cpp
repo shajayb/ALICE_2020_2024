@@ -25,6 +25,206 @@ zVector AliceVecToZvec(Alice::vec& in)
 
 #include "scalarField.h" //// two functiosn must be turned on in scalarfIELD.H for sketch_circleSDF_fitter.cpp
 
+
+//------------------------------------------------------------------ MLP base class
+
+class MLP
+{
+public:
+    int inputDim = 2;
+    int outputDim = 1;
+    std::vector<int> hiddenDims = { 8, 8 };
+
+    std::vector<std::vector<std::vector<float>>> W;
+    std::vector<std::vector<float>> b;
+    std::vector<std::vector<float>> activations;
+
+
+    MLP()
+    {}
+
+    MLP(int inDim, std::vector<int> hidden, int outDim)
+    {
+        initialize(inDim, hidden, outDim);
+    }
+
+    void initialize(int inDim, std::vector<int> hidden, int outDim)
+    {
+        inputDim = inDim;
+        hiddenDims = hidden;
+        outputDim = outDim;
+
+        std::vector<int> layerDims = { inputDim };
+        layerDims.insert(layerDims.end(), hiddenDims.begin(), hiddenDims.end());
+        layerDims.push_back(outputDim);
+
+        W.clear(); b.clear();
+        for (int l = 0; l < layerDims.size() - 1; ++l)
+        {
+            int inSize = layerDims[l];
+            int outSize = layerDims[l + 1];
+            W.push_back(std::vector<std::vector<float>>(outSize, std::vector<float>(inSize)));
+            b.push_back(std::vector<float>(outSize));
+            for (auto& w_row : W[l])
+                for (auto& w : w_row)
+                    w = ((float)rand() / RAND_MAX - 0.5f) * 0.1f;
+        }
+    }
+
+    std::vector<float> forward(std::vector<float>& x)
+    {
+        activations.clear();
+        activations.push_back(x);
+        std::vector<float> a = x;
+
+        for (int l = 0; l < W.size(); ++l)
+        {
+            std::vector<float> z(b[l]);
+            for (int i = 0; i < W[l].size(); ++i)
+                for (int j = 0; j < W[l][i].size(); ++j)
+                    z[i] += W[l][i][j] * a[j];
+
+            if (l < W.size() - 1)
+                for (auto& val : z) val = std::tanh(val);
+
+            activations.push_back(z);
+            a = z;
+        }
+        return a;
+    }
+
+    virtual float computeLoss(std::vector<float>& y_pred, std::vector<float>& y_true)
+    {
+        float loss = 0.0f;
+        for (int i = 0; i < y_pred.size(); ++i)
+        {
+            float err = y_pred[i] - y_true[i];
+            loss += err * err;
+        }
+        return loss / y_pred.size();
+    }
+
+    virtual void computeGradient(std::vector<float>& x, std::vector<float>& y_true, std::vector<float>& gradOut)
+    {
+        std::vector<float> y_pred = forward(x);
+        gradOut.assign(outputDim, 0.0f);
+        for (int i = 0; i < outputDim; ++i)
+        {
+            gradOut[i] = 2.0f * (y_pred[i] - y_true[i]) / outputDim;
+        }
+    }
+
+    void backward(std::vector<float>& gradOut, float lr)
+    {
+        std::vector<float> delta = gradOut;
+
+        for (int l = W.size() - 1; l >= 0; --l)
+        {
+            std::vector<float> prev = activations[l];
+            std::vector<float> newDelta(prev.size(), 0.0f);
+
+            for (int i = 0; i < W[l].size(); ++i)
+            {
+                for (int j = 0; j < W[l][i].size(); ++j)
+                {
+                    newDelta[j] += delta[i] * W[l][i][j];
+                    W[l][i][j] -= lr * delta[i] * prev[j];
+                }
+                b[l][i] -= lr * delta[i];
+            }
+
+            if (l > 0)
+            {
+                for (int i = 0; i < newDelta.size(); ++i)
+                {
+                    float a = activations[l][i];
+                    newDelta[i] *= (1 - a * a); // tanh'
+                }
+                delta = newDelta;
+            }
+        }
+    }
+
+    //
+
+    void visualize(zVector topLeft = zVector(50, 450, 0), float bboxWidth = 400.0f, float bboxHeight = 300.0f)
+    {
+        setup2d();
+
+        int numLayers = activations.size();
+        float nodeRadius = 5.0f;
+
+        // Get max nodes per layer to compute spacing
+        int maxNodesPerLayer = 0;
+        for (auto& layer : activations)
+        {
+            maxNodesPerLayer = std::max(maxNodesPerLayer, (int)layer.size());
+        }
+
+        float layerSpacing = (numLayers > 1) ? bboxWidth / (numLayers - 1) : 0.0f;
+        float verticalSpacing = (maxNodesPerLayer > 1) ? bboxHeight / (maxNodesPerLayer - 1) : 0.0f;
+
+        std::vector<std::vector<zVector>> nodePositions(numLayers);
+
+        // Compute node positions
+        for (int l = 0; l < numLayers; l++)
+        {
+            int numNodes = activations[l].size();
+            float yStart = topLeft.y - 0.5f * (numNodes - 1) * verticalSpacing;
+
+            for (int n = 0; n < numNodes; n++)
+            {
+                float x = topLeft.x + l * layerSpacing;
+                float y = yStart + n * verticalSpacing;
+                nodePositions[l].push_back(zVector(x, y, 0));
+            }
+        }
+
+        // Draw weight connections (color strong weights)
+        for (int l = 0; l < numLayers - 1; l++)
+        {
+            int fromSize = activations[l].size();
+            int toSize = activations[l + 1].size();
+
+            for (int i = 0; i < fromSize; i++)
+            {
+                float activation = activations[l][i];
+
+                for (int j = 0; j < toSize; j++)
+                {
+                    float w = W[l][j][i];
+                    float val = std::clamp(w * 5.0f, -1.0f, 1.0f);
+
+                    float r, g, b;
+                    getJetColor(val, r, g, b);
+                    (val > 0.9) ? glColor3f(r, g, b) : glColor3f(0.8, 0.8, 0.8);
+
+                    drawLine(zVecToAliceVec(nodePositions[l][i]), zVecToAliceVec(nodePositions[l + 1][j]));
+                }
+            }
+        }
+
+        // Draw neuron activations
+        for (int l = 0; l < numLayers; l++)
+        {
+            for (int i = 0; i < activations[l].size(); i++)
+            {
+                float act = std::tanh(activations[l][i]);
+                float r, g, b;
+                getJetColor(act, r, g, b);
+                glColor3f(0, 0, 0); // black outline
+
+                drawCircle(zVecToAliceVec(nodePositions[l][i]), nodeRadius, 12);
+            }
+        }
+
+        restore3d();
+    }
+
+};
+
+/// --------- sub class
+
 //------------------------------------------------------------------ Utility
 
 bool isInsidePolygon(zVector& p, std::vector<zVector>& poly)
@@ -50,7 +250,7 @@ bool isInsidePolygon(zVector& p, std::vector<zVector>& poly)
 
     return (windingNumber != 0);
 }
-float polygonSDF( zVector& p,  std::vector<zVector>& poly)
+float polygonSDF(zVector& p, std::vector<zVector>& poly)
 {
     float minDist = 1e6;
     int n = poly.size();
@@ -63,7 +263,7 @@ float polygonSDF( zVector& p,  std::vector<zVector>& poly)
         zVector ab = b - a;
         zVector ap = p - a;
 
-        float t = std::max(0.0f, std::min(1.0f, (ab * ap) / (ab*ab)));
+        float t = std::max(0.0f, std::min(1.0f, (ab * ap) / (ab * ab)));
         zVector proj = a + ab * t;
         float d = p.distanceTo(proj);
         minDist = std::min(minDist, d);
@@ -72,17 +272,7 @@ float polygonSDF( zVector& p,  std::vector<zVector>& poly)
     return minDist * (isInsidePolygon(p, poly) ? -1.0f : 1.0f);
 }
 
-//------------------------------------------------------------------ Globals
-
-std::vector<zVector> polygon;
-std::vector<zVector> trainingSamples;
-std::vector<float> sdfGT;
-
-float smoothK = 3.0f;
-float radius = 10.0f;
-#define NUM_SDF 16
-
-void loadPolygonFromCSV(const std::string& filename)
+void loadPolygonFromCSV(const std::string& filename, vector<zVector> &polygon)
 {
     polygon.clear();
     std::ifstream file(filename);
@@ -103,7 +293,7 @@ void loadPolygonFromCSV(const std::string& filename)
     cout << polygon.size() << " polygon size" << endl;
 }
 
-void samplePoints()
+void samplePoints(std::vector<zVector> &trainingSamples, std::vector<float> &sdfGT, vector<zVector>& polygon)
 {
     trainingSamples.clear();
     sdfGT.clear();
@@ -137,91 +327,32 @@ float blendCircleSDFs(zVector pt, std::vector<zVector>& centers, std::vector<flo
 
 //------------------------------------------------------------------ MLP
 
-class MLP
+
+class PolygonSDF_MLP : public MLP
 {
 public:
-    int inputDim = 1;
-    int outputDim = 6;
-    std::vector<int> hiddenLayerDims = { 8, 8 };
-    std::vector<std::vector<std::vector<float>>> W;
-    std::vector<std::vector<float>> b;
 
-    std::vector<std::vector<float>> activations;
+    std::vector<zVector> polygon;
+    std::vector<zVector> trainingSamples;
+    std::vector<float> sdfGT;
 
     std::vector<zVector> fittedCenters;
     std::vector<float> fittedRadii;
 
-
-    MLP()
-    {
-        std::vector<int> layerDims = { inputDim };
-        layerDims.insert(layerDims.end(), hiddenLayerDims.begin(), hiddenLayerDims.end());
-        layerDims.push_back(outputDim);
-
-        for (int l = 0; l < layerDims.size() - 1; l++)
-        {
-            int inSize = layerDims[l];
-            int outSize = layerDims[l + 1];
-            W.push_back(std::vector<std::vector<float>>(outSize, std::vector<float>(inSize, 0.01f)));
-            b.push_back(std::vector<float>(outSize, 0.0f));
-        }
-    }
-
-    MLP(int inDim, std::vector<int>& hiddenDims, int outDim)
-    {
-        inputDim = inDim;
-        outputDim = outDim;
-        hiddenLayerDims = hiddenDims;
-
-        std::vector<int> layerDims = { inputDim };
-        layerDims.insert(layerDims.end(), hiddenLayerDims.begin(), hiddenLayerDims.end());
-        layerDims.push_back(outputDim);
-
-        W.clear();
-        b.clear();
-
-        for (int l = 0; l < layerDims.size() - 1; l++)
-        {
-            int inSize = layerDims[l];
-            int outSize = layerDims[l + 1];
-
-            W.push_back(std::vector<std::vector<float>>(outSize, std::vector<float>(inSize, 0.01f)));
-            b.push_back(std::vector<float>(outSize, 0.0f));
-        }
-    }
+    int number_sdf;
+    double radius = 10.0f;
+    float smoothK = 3.0f;
 
 
-    std::vector<float> forward( std::vector<float>& x)
-    {
-        activations.clear();
-        activations.push_back(x); // input
+    using MLP::MLP;
 
-        std::vector<float> a = x;
-        for (int l = 0; l < W.size(); l++)
-        {
-            std::vector<float> z = b[l];
-            for (int i = 0; i < W[l].size(); i++)
-            {
-                for (int j = 0; j < W[l][i].size(); j++)
-                {
-                    z[i] += W[l][i][j] * a[j];
-                }
-                if (l < W.size() - 1) z[i] = tanh(z[i]);
-            }
-            activations.push_back(z);
-            a = z;
-        }
-
-        return a;
-    }
-
-    float computeLoss( std::vector<float>& x, std::vector<zVector>& polygon)
+    float computeLoss(std::vector<float>& x, std::vector<float>& dummy) override
     {
         auto out = forward(x);
+        std::vector<zVector> centers(number_sdf);
+        std::vector<float> radii(number_sdf);
 
-        std::vector<zVector> centers(NUM_SDF);
-        std::vector<float> radii(NUM_SDF);
-        for (int i = 0; i < NUM_SDF; i++)
+        for (int i = 0; i < number_sdf; i++)
         {
             centers[i] = zVector(out[i * 2 + 0], out[i * 2 + 1], 0);
             radii[i] = radius;
@@ -238,13 +369,13 @@ public:
         return loss / trainingSamples.size();
     }
 
-    void computeGradient( std::vector<float>& x, std::vector<zVector>& polygon, std::vector<float>& gradOut)
+    void computeGradient(std::vector<float>& x, std::vector<float>& dummy, std::vector<float>& gradOut) override
     {
         auto out = forward(x);
-        std::vector<zVector> centers(NUM_SDF);
-        std::vector<float> radii(NUM_SDF);
+        std::vector<zVector> centers(number_sdf);
+        std::vector<float> radii(number_sdf);
 
-        for (int i = 0; i < NUM_SDF; i++)
+        for (int i = 0; i < number_sdf; i++)
         {
             centers[i] = zVector(out[i * 2 + 0], out[i * 2 + 1], 0);
             radii[i] = radius;
@@ -263,7 +394,7 @@ public:
             float pred = blendCircleSDFs(pt, centers, radii, smoothK);
             float err = pred - gt;
 
-            for (int i = 0; i < NUM_SDF; i++)
+            for (int i = 0; i < number_sdf; i++)
             {
                 std::vector<zVector> cx = centers, cy = centers;
                 cx[i].x += eps;
@@ -277,50 +408,61 @@ public:
 
         for (float& g : gradOut) g /= trainingSamples.size();
     }
-
-    void backward( std::vector<float>& gradOut, float lr)
-    {
-        int L = hiddenLayerDims.size();
-        int current = L;
-
-        std::vector<float> grad = gradOut;
-        std::vector<float> prevGrad;
-
-        for (int l = W.size() - 1; l >= 0; --l)
-        {
-             std::vector<float>& prev = activations[l];
-            std::vector<float> delta(prev.size(), 0.0f);
-
-            for (int i = 0; i < W[l].size(); ++i)
-            {
-                for (int j = 0; j < W[l][i].size(); ++j)
-                {
-                    W[l][i][j] -= lr * grad[i] * prev[j];
-                    delta[j] += grad[i] * W[l][i][j];
-                }
-                b[l][i] -= lr * grad[i];
-            }
-
-            if (l > 0)
-            {
-                grad.resize(prev.size());
-                for (int i = 0; i < delta.size(); ++i)
-                {
-                    float act = activations[l][i];
-                    grad[i] = delta[i] * (1 - act * act);
-                }
-            }
-        }
-    }
 };
 
-//------------------------------------------------------------------ MVC
+//----------------------- Unit test for generic MLP
 
-MLP mlp;
+void runUnitTest()
+{
+    MLP net(2, { 8, 8 }, 1);
+
+    std::vector<std::vector<float>> X, Y;
+    for (int i = 0; i < 100; ++i)
+    {
+        float x0 = ((float)rand() / RAND_MAX) * 6.28f - 3.14f;
+        float x1 = ((float)rand() / RAND_MAX) * 6.28f - 3.14f;
+        float y = std::sin(x0) + std::cos(x1);
+        X.push_back({ x0, x1 });
+        Y.push_back({ y });
+    }
+
+    float lr = 0.01f;
+    for (int epoch = 0; epoch < 1200; ++epoch)
+    {
+        float totalLoss = 0.0f;
+        for (int i = 0; i < X.size(); ++i)
+        {
+            std::vector<float> grads;
+            net.computeGradient(X[i], Y[i], grads);
+            net.backward(grads, lr);
+            auto out = net.forward(X[i]);
+            totalLoss += net.computeLoss(out, Y[i]);
+        }
+        totalLoss /= X.size();
+        if (epoch % 50 == 0)
+            std::cout << "Epoch " << epoch << " Avg Loss: " << totalLoss << std::endl;
+    }
+
+    std::cout << "Test prediction:\n";
+    for (int i = 0; i < 5; ++i)
+    {
+        auto out = net.forward(X[i]);
+        std::cout << "Input: (" << X[i][0] << ", " << X[i][1] << ") Target: " << Y[i][0] << " Pred: " << out[0] << std::endl;
+    }
+}
+
+
+//------------------------------------------------------------------ MVC test for subClassMLP
+std::vector<zVector> polygon;
+std::vector<zVector> trainingSamples;
+std::vector<float> sdfGT;
+
+
+#define NUM_SDF 16
+
+PolygonSDF_MLP mlp;
 std::vector<float> grads;
 std::vector<float> mlp_input_data;
-
-
 
 
 
@@ -328,32 +470,39 @@ void initializeMLP()
 {
     int input_dim = NUM_SDF * 2;
     int output_dim = NUM_SDF * 2;
-    std::vector<int> hidden_dims = { 32, 32 };
+    std::vector<int> hidden_dims = { 16, 16 };
 
-    mlp = MLP(input_dim, hidden_dims, output_dim); // assumes MLP constructor initializes weights/biases
+    mlp = PolygonSDF_MLP(input_dim, hidden_dims, output_dim); // assumes MLP constructor initializes weights/biases
     mlp_input_data.assign(input_dim, 1.0f); // or use 0.0f for strict zero-input
+    mlp.number_sdf = NUM_SDF;
+
 }
 
 
 void setup()
 {
-    loadPolygonFromCSV("data/polygon.txt");
-    samplePoints();
+   
 
     initializeMLP();  // <-- add this line
+
+    loadPolygonFromCSV("data/polygon.txt", polygon);
+    samplePoints(trainingSamples, sdfGT, polygon);
+
+    mlp.trainingSamples = trainingSamples;
+    mlp.sdfGT = sdfGT;
 }
 
 void update(int value) {}
 
 void draw()
 {
-    backGround(0.8);
+    backGround(1);
     drawGrid(50);
 
     glColor3f(1, 0, 0);
     for (auto& c : mlp.fittedCenters)
     {
-        drawCircle(zVecToAliceVec(c), radius * 0.25, 32);
+        drawCircle(zVecToAliceVec(c), 3, 32);
     }
 
     glColor3f(0, 0, 1);
@@ -369,6 +518,8 @@ void draw()
         int j = (i + 1) % polygon.size();
         drawLine(zVecToAliceVec(polygon[i]), zVecToAliceVec(polygon[j]));
     }
+
+    mlp.visualize(zVector(50, 450, 0), 400, 300);
 }
 
 void keyPress(unsigned char k, int xm, int ym)
@@ -376,12 +527,22 @@ void keyPress(unsigned char k, int xm, int ym)
     if (k == 't')
     {
         grads.clear();
-        float loss = mlp.computeLoss(mlp_input_data, polygon);
-        mlp.computeGradient(mlp_input_data, polygon, grads);
+        std::vector<float> dummy;  // unused placeholder
+        float loss = mlp.computeLoss(mlp_input_data, dummy);
+        mlp.computeGradient(mlp_input_data, dummy, grads);
+
         mlp.backward(grads, 0.1f);
 
         std::cout << "Loss: " << loss << std::endl;
+
+
     }
+
+    if (k == 'u')
+    {
+        runUnitTest();
+    }
+
 
 }
 
