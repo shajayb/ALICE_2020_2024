@@ -409,9 +409,12 @@ public:
     }
 
     //---------------------------------------------
+    zVector getGradient(int i, int j)
+    {
+        return gradient[i][j];
+    }
 
-
-    void computeGradient()
+     void computeGradient()
     {
         for (int i = 1; i < RES - 1; i++)
         {
@@ -423,6 +426,41 @@ public:
             }
         }
     }
+
+     float sampleAt(float x, float y)
+     {
+         float span = 100.0f;
+         float step = span / (ScalarField2D::RES - 1);
+
+         float fx = (x + 50.0f) / step;
+         float fy = (y + 50.0f) / step;
+
+         int i = std::floor(fx);
+         int j = std::floor(fy);
+
+         float tx = fx - i;
+         float ty = fy - j;
+
+         if (i < 0 || j < 0 || i >= ScalarField2D::RES - 1 || j >= ScalarField2D::RES - 1)
+             return 1e6f;
+
+         float f00 = field[i][j];
+         float f10 = field[i + 1][j];
+         float f01 = field[i][j + 1];
+         float f11 = field[i + 1][j + 1];
+
+         float fx0 = (1 - tx) * f00 + tx * f10;
+         float fx1 = (1 - tx) * f01 + tx * f11;
+         return (1 - ty) * fx0 + ty * fx1;
+     }
+
+     zVector gradientAt(const zVector& p)
+     {
+         float eps = 1.0f;
+         float dx = sampleAt(p.x + eps, p.y) - sampleAt(p.x - eps, p.y);
+         float dy = sampleAt(p.x, p.y + eps) - sampleAt(p.x, p.y - eps);
+         return zVector(dx, dy, 0.0f) * 0.5f;
+     }
 
     //---------------------------------------------
 
@@ -669,8 +707,9 @@ public:
     //---------------------------------------------
 
     char s[20];
-    void drawFieldPoints( bool debug = false)
+    void drawFieldPoints(bool drawGradient = false, bool debug = false)
     {
+        Alice::vec pt;
         normalise();
         glPointSize(2);
         for (int i = 0; i < RES; i++)
@@ -688,6 +727,15 @@ public:
                 {
                     sprintf(s, "%.2f", field[i][j]);
                     drawString(s, zVecToAliceVec(gridPoints[i][j]));
+                }
+
+                if (drawGradient)
+                {
+                    pt = zVecToAliceVec(gridPoints[i][j]);
+                    zVector grad = gradient[i][j];
+                    grad.normalize();
+
+                    drawLine(pt , pt + zVecToAliceVec(grad) * 1);
                 }
             }
         }
