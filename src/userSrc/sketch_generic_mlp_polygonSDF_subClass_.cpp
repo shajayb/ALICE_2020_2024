@@ -264,7 +264,7 @@ std::vector<zVector> trainingSamples;
 std::vector<float> sdfGT;
 
 
-#define NUM_CIRCLES 16
+#define NUM_CENTERS 16
 
 PolygonSDF_MLP mlp;
 std::vector<float> grads;
@@ -274,13 +274,13 @@ std::vector<float> mlp_input_data;
 // function
 void initializeMLP()
 {
-    int input_dim = NUM_CIRCLES * 2;
-    int output_dim = NUM_CIRCLES * 2;
+    int input_dim = NUM_CENTERS * 2;
+    int output_dim = NUM_CENTERS * 2;
     std::vector<int> hidden_dims = { 8 };
 
     mlp = PolygonSDF_MLP(input_dim, hidden_dims, output_dim); // assumes MLP constructor initializes weights/biases
     mlp_input_data.assign(input_dim, 1.0f); // or use 0.0f for strict zero-input
-    mlp.number_sdf = NUM_CIRCLES;
+    mlp.number_sdf = NUM_CENTERS;
 
 }
 

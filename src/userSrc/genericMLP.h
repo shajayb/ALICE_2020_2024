@@ -135,22 +135,34 @@ public:
 
     //
 
+    void drawSolidCircle(Alice::vec center, float radius, int numSegments = 32)
+    {
+        glBegin(GL_TRIANGLE_FAN);
+        glVertex2f(center.x, center.y);  // center
+        for (int i = 0; i <= numSegments; i++)
+        {
+            float angle = TWO_PI * i / numSegments;
+            float x = center.x + radius * cos(angle);
+            float y = center.y + radius * sin(angle);
+            glVertex2f(x, y);
+        }
+        glEnd();
+    }
+
     void visualize(zVector topLeft = zVector(50, 450, 0), float bboxWidth = 400.0f, float bboxHeight = 300.0f)
     {
-        setup2d();
+        setup2d();  // 2D drawing
 
         int numLayers = activations.size();
-        float nodeRadius = 5.0f;
+        float nodeRadius = 3.0f;
 
-        // Get max nodes per layer to compute spacing
+        // Compute max nodes per layer for vertical spacing
         int maxNodesPerLayer = 0;
         for (auto& layer : activations)
-        {
             maxNodesPerLayer = std::max(maxNodesPerLayer, (int)layer.size());
-        }
 
-        float layerSpacing = (numLayers > 1) ? bboxWidth / (numLayers - 1) : 0.0f;
-        float verticalSpacing = (maxNodesPerLayer > 1) ? bboxHeight / (maxNodesPerLayer - 1) : 0.0f;
+        float layerSpacing = (numLayers > 1) ? bboxWidth / (numLayers - 1) : 150.0f;
+        float verticalSpacing = (maxNodesPerLayer > 1) ? bboxHeight / (maxNodesPerLayer - 1) : 30.0f;
 
         std::vector<std::vector<zVector>> nodePositions(numLayers);
 
@@ -160,15 +172,18 @@ public:
             int numNodes = activations[l].size();
             float yStart = topLeft.y - 0.5f * (numNodes - 1) * verticalSpacing;
 
-            for (int n = 0; n < numNodes; n++)
+            for (int i = 0; i < numNodes; i++)
             {
                 float x = topLeft.x + l * layerSpacing;
-                float y = yStart + n * verticalSpacing;
+                float y = yStart + i * verticalSpacing;
                 nodePositions[l].push_back(zVector(x, y, 0));
             }
         }
 
-        // Draw weight connections (color strong weights)
+        // --- Draw weight connections
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
         for (int l = 0; l < numLayers - 1; l++)
         {
             int fromSize = activations[l].size();
@@ -176,37 +191,119 @@ public:
 
             for (int i = 0; i < fromSize; i++)
             {
-                float activation = activations[l][i];
-
                 for (int j = 0; j < toSize; j++)
                 {
                     float w = W[l][j][i];
-                    float val = std::clamp(w * 5.0f, -1.0f, 1.0f);
+                    float absW = fabs(w);
 
+                    if (absW < 0.02f) continue;  // skip very weak connections
+
+                    float val = std::clamp(w * 5.0f, -1.0f, 1.0f);
                     float r, g, b;
                     getJetColor(val, r, g, b);
-                    (val > 0.9) ? glColor3f(r, g, b) : glColor3f(0.8, 0.8, 0.8);
 
+                    glColor4f(r, g, b, 0.4f);  // faded connection
+                    glLineWidth(std::clamp(absW * 5.0f, 0.5f, 3.0f));
                     drawLine(zVecToAliceVec(nodePositions[l][i]), zVecToAliceVec(nodePositions[l + 1][j]));
                 }
             }
         }
 
-        // Draw neuron activations
+        glDisable(GL_BLEND);
+        glLineWidth(1.0f);
+
+        // --- Draw nodes
         for (int l = 0; l < numLayers; l++)
         {
             for (int i = 0; i < activations[l].size(); i++)
             {
-                float act = std::tanh(activations[l][i]);
+                float act = activations[l][i];
                 float r, g, b;
                 getJetColor(act, r, g, b);
-                glColor3f(0, 0, 0); // black outline
 
-                drawCircle(zVecToAliceVec(nodePositions[l][i]), nodeRadius, 12);
+                glColor3f(r, g, b);
+                drawSolidCircle(zVecToAliceVec(nodePositions[l][i]), nodeRadius, 12);
             }
         }
 
         restore3d();
     }
+
+
+
+
+    //void visualize(zVector topLeft = zVector(50, 450, 0), float bboxWidth = 400.0f, float bboxHeight = 300.0f)
+    //{
+    //    setup2d();
+
+    //    int numLayers = activations.size();
+    //    float nodeRadius = 5.0f;
+
+    //    // Get max nodes per layer to compute spacing
+    //    int maxNodesPerLayer = 0;
+    //    for (auto& layer : activations)
+    //    {
+    //        maxNodesPerLayer = std::max(maxNodesPerLayer, (int)layer.size());
+    //    }
+
+    //    float layerSpacing = (numLayers > 1) ? bboxWidth / (numLayers - 1) : 0.0f;
+    //    float verticalSpacing = (maxNodesPerLayer > 1) ? bboxHeight / (maxNodesPerLayer - 1) : 0.0f;
+
+    //    std::vector<std::vector<zVector>> nodePositions(numLayers);
+
+    //    // Compute node positions
+    //    for (int l = 0; l < numLayers; l++)
+    //    {
+    //        int numNodes = activations[l].size();
+    //        float yStart = topLeft.y - 0.5f * (numNodes - 1) * verticalSpacing;
+
+    //        for (int n = 0; n < numNodes; n++)
+    //        {
+    //            float x = topLeft.x + l * layerSpacing;
+    //            float y = yStart + n * verticalSpacing;
+    //            nodePositions[l].push_back(zVector(x, y, 0));
+    //        }
+    //    }
+
+    //    // Draw weight connections (color strong weights)
+    //    for (int l = 0; l < numLayers - 1; l++)
+    //    {
+    //        int fromSize = activations[l].size();
+    //        int toSize = activations[l + 1].size();
+
+    //        for (int i = 0; i < fromSize; i++)
+    //        {
+    //            float activation = activations[l][i];
+
+    //            for (int j = 0; j < toSize; j++)
+    //            {
+    //                float w = W[l][j][i];
+    //                float val = std::clamp(w * 5.0f, -1.0f, 1.0f);
+
+    //                float r, g, b;
+    //                getJetColor(val, r, g, b);
+    //                (val > 0.9) ? glColor3f(r, g, b) : glColor3f(0.8, 0.8, 0.8);
+
+    //                drawLine(zVecToAliceVec(nodePositions[l][i]), zVecToAliceVec(nodePositions[l + 1][j]));
+    //            }
+    //        }
+    //    }
+
+    //    // Draw neuron activations
+    //    for (int l = 0; l < numLayers; l++)
+    //    {
+    //        for (int i = 0; i < activations[l].size(); i++)
+    //        {
+    //            float act = std::tanh(activations[l][i]);
+    //            float r, g, b;
+    //            getJetColor(act, r, g, b);
+    //            glColor3f(0, 0, 0); // black outline
+
+    //            drawCircle(zVecToAliceVec(nodePositions[l][i]), nodeRadius, 12);
+    //        }
+    //    }
+
+    //    restore3d();
+    //}
 
 };

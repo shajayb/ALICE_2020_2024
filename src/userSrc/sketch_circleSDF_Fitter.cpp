@@ -58,7 +58,7 @@ bool vizField = false;
 std::vector<float> sdfGT;
 std::vector<zVector> fittedCenters;
 std::vector<float> fittedRadii;
-#define NUM_CIRCLES 16
+#define NUM_CENTERS 16
 //std::vector<zVector> polygon;
 double threshold;
 
@@ -489,13 +489,13 @@ public:
         // that the MLP predicts for x, y, and potentially radius for each circle.
         auto raw_mlp_output = forward(x);
 
-        std::vector<zVector> centers(NUM_CIRCLES);
-        std::vector<float> radii(NUM_CIRCLES);
+        std::vector<zVector> centers(NUM_CENTERS);
+        std::vector<float> radii(NUM_CENTERS);
 
         // Interpret MLP output as circle parameters.
         // Apply any necessary transformations (e.g., clamping for robustness, but ideally learned)
         // For now, let's keep the radius fixed as in your problem statement
-        for (int i = 0; i < NUM_CIRCLES; i++)
+        for (int i = 0; i < NUM_CENTERS; i++)
         {
             // For x, y, consider if they need to be clamped or scaled.
             // For now, using raw output for gradient calculation, but apply insidePolygon check for the actual usage.
@@ -539,7 +539,7 @@ public:
             // of the *output parameters* (x, y for centers, and radius) that come from the MLP.
 
             zVector gradient;
-            for (int i = 0; i < NUM_CIRCLES; ++i) // For each circle
+            for (int i = 0; i < NUM_CENTERS; ++i) // For each circle
             {
                 // Gradient with respect to center.x of circle i
                 std::vector<zVector> centers_plus_x = centers;
@@ -840,8 +840,8 @@ void setup()
     B.addButton(&vizField, "field");
 
     // --- MLP Initialization (Properly done ONCE here) ---
-    int input_dim = NUM_CIRCLES * 2; // Input is a fixed vector of zeros, matching mlp_input_data below
-    int output_dim = NUM_CIRCLES * 2; // Output is x,y for each of NUM_SDF circles
+    int input_dim = NUM_CENTERS * 2; // Input is a fixed vector of zeros, matching mlp_input_data below
+    int output_dim = NUM_CENTERS * 2; // Output is x,y for each of NUM_SDF circles
     std::vector<int> hidden_dims = { 32, 32 }; // Example hidden layers
 
     // Call the initialize method on the global 'mlp' object.

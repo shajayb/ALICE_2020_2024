@@ -182,7 +182,7 @@ public:
     }
 };
 
-#define NUM_CIRCLES 3
+#define NUM_CENTERS 3
 std::vector<zVector> polygon;
 
 float polygonSDF(std::vector<zVector>& poly, zVector& p)
@@ -233,8 +233,8 @@ void computeSampleData()
 
 void trainCircleSDF()
 {
-    MLP mlp(NUM_CIRCLES * 3, 32, 3 * NUM_CIRCLES);
-    std::vector<float> input(NUM_CIRCLES * 3, 0.0f);
+    MLP mlp(NUM_CENTERS * 3, 32, 3 * NUM_CENTERS);
+    std::vector<float> input(NUM_CENTERS * 3, 0.0f);
     std::vector<float> gradOut;
 
     for (int epoch = 0; epoch < 100; ++epoch)

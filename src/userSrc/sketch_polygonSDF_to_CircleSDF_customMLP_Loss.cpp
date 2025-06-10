@@ -86,7 +86,7 @@ std::vector<zVector> samplePts;
 std::vector<float> sdfGT;
 std::vector<zVector> fittedCenters;
 std::vector<float> fittedRadii;
-#define NUM_CIRCLES 8
+#define NUM_CENTERS 8
 std::vector<zVector> polygon;
 double threshold;
 
@@ -360,7 +360,7 @@ void computeSampleData()
 }
 
 bool train = false;
-std::vector<float> input(NUM_CIRCLES * 3, 0.0f);
+std::vector<float> input(NUM_CENTERS * 3, 0.0f);
 std::vector<float> gradOut;
 MLP mlp;
 ScalarField2D sf;
@@ -369,7 +369,7 @@ bool drawSF = false;
 void trainCircleSDF()
 {
 
-    mlp = MLP(NUM_CIRCLES * 3, 32, 3 * NUM_CIRCLES);
+    mlp = MLP(NUM_CENTERS * 3, 32, 3 * NUM_CENTERS);
 
 }
 
