@@ -50,7 +50,9 @@
     <ClCompile Include="src\userSrc\sketch_CircleSDF_mlp_handCoded.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_MLP_DRL_test.cpp" />
+    <ClCompile Include="src\userSrc\sketch_MLP_DRL_test.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="src\userSrc\sketch_mlp_generic_circleFitter.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
@@ -66,11 +68,14 @@
     <ClCompile Include="src\userSrc\Sketch_scalarAdvection.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_SF_blends.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="src\userSrc\sketch_SF_flowerPot.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_heightField.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_parcel.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
@@ -265,7 +270,7 @@
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <OmitFramePointers>true</OmitFramePointers>
       <WholeProgramOptimization>true</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>src/ZSPACE;src/gl2ps;src/freeglut;src/alice;src/glew/include;src/;src/userSrc;include;src/tiny-dnn-master/tiny-dnn-master/;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src/ZSPACE;src/gl2ps;src/freeglut;src/alice;src/glew/include;src/;src/userSrc;include;src/tiny-dnn-master/tiny-dnn-master/;src/OT;C:\Users\shajay.b\source\repos\ALICE_2020_2024\src\fftw;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <FunctionLevelLinking>false</FunctionLevelLinking>
       <FloatingPointModel>Fast</FloatingPointModel>
@@ -282,7 +287,7 @@
     <Link>
       <AdditionalDependencies>Ws2_32.lib;glew32.lib;ALICE_DLL.lib;opengl32.lib;gl2ps.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)EXE\$(ProjectName).exe</OutputFile>
-      <AdditionalLibraryDirectories>x64/Release;src/gl2ps;src/;src/glew/lib;src/alice;src/freeglut;C:\Users\FB\Desktop\ALICE\src\ZSPACE\depends\SQLITE\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>x64/Release;src/gl2ps;src/;src/glew/lib;src/alice;src/freeglut;C:\Users\FB\Desktop\ALICE\src\ZSPACE\depends\SQLITE\lib;src/fftw;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>

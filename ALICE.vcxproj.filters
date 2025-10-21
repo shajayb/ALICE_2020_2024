@@ -20,22 +20,54 @@
     <Filter Include="MVC">
       <UniqueIdentifier>{363452be-02d7-4398-854d-90ea253cf8b3}</UniqueIdentifier>
     </Filter>
+    <Filter Include="sketches">
+      <UniqueIdentifier>{1bcad749-f2dd-456f-9707-396d94666e35}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\userSrc\sketch_chat_AStar_marchingTriangle.cpp" />
-    <ClCompile Include="src\userSrc\sketch_parcel.cpp" />
-    <ClCompile Include="src\userSrc\sketch_heightField.cpp" />
-    <ClCompile Include="src\userSrc\sketch_scalarField_blend.cpp" />
-    <ClCompile Include="src\userSrc\sketch_SF_flowerPot.cpp" />
-    <ClCompile Include="src\userSrc\sketch_3DfieldSlicer.cpp" />
-    <ClCompile Include="src\userSrc\Sketch_scalarAdvection.cpp" />
-    <ClCompile Include="src\userSrc\sketch_circleSDF_Fitter.cpp" />
-    <ClCompile Include="src\userSrc\sketch_CircleSDF_mlp_handCoded.cpp" />
-    <ClCompile Include="src\userSrc\sketch_polygonSDF_mlp_tinyDNN.cpp" />
-    <ClCompile Include="src\userSrc\sketch_polygonSDF_to_CircleSDF_customMLP_Loss.cpp" />
-    <ClCompile Include="src\userSrc\sketch_MLP_SDF_latentspace.cpp" />
-    <ClCompile Include="src\userSrc\sketch_mlp_generic_circleFitter.cpp" />
-    <ClCompile Include="src\userSrc\sketch_generic_mlp_polygonSDF_subClass_.cpp" />
     <ClCompile Include="src\userSrc\sketch_MLP_DRL_test.cpp" />
+    <ClCompile Include="src\userSrc\sketch_3DfieldSlicer.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_chat_AStar_marchingTriangle.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_circleSDF_Fitter.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_CircleSDF_mlp_handCoded.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_generic_mlp_polygonSDF_subClass_.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_heightField.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_mlp_generic_circleFitter.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_MLP_SDF_latentspace.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_parcel.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_polygonSDF_mlp_tinyDNN.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_polygonSDF_to_CircleSDF_customMLP_Loss.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\Sketch_scalarAdvection.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_scalarField_blend.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_SF_flowerPot.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_SF_blends.cpp" />
   </ItemGroup>
 </Project>
