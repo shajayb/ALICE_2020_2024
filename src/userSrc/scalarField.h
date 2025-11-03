@@ -22,6 +22,17 @@ inline float smin(float a, float b, float k)
     return std::min(a, b) - h * h * k * 0.25f;
 }
 
+inline zVector zMin(const zVector& a, const zVector& b)
+{
+    return zVector(std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z));
+}
+
+inline float zLerp(float a, float b, float t)
+{
+    return a + (b - a) * t;
+}
+
+
 inline void getJetColor(float value, float& r, float& g, float& b)
 {
     // Clamp input to [-1, 1]
@@ -413,7 +424,19 @@ public:
         }
     }
 
-    /*void rescaleFieldToRange(float targetMin = -1.0f, float targetMax = 1.0f)
+
+    void minMax( float &mn, float &mx)
+    {
+        mn = 1e6; mx = -mn;
+        for (int i = 0; i < RES; ++i)
+            for (int j = 0; j < RES; ++j)
+            {
+                float v = field[i][j];
+                mn = min(v, mn);
+                mx = max(v, mx);
+            }
+    }
+    void rescaleFieldToRange(float targetMin = -1.0f, float targetMax = 1.0f)
     {
         float minVal[2] = { 1e6f,  1e6f };
         float maxVal[2] = { -1e6f, -1e6f };
@@ -438,140 +461,144 @@ public:
                 ? ofMap(field[i][j], minVal[0], maxVal[0], 0.0f, targetMax)
                 : ofMap(field[i][j], minVal[1], maxVal[1], targetMin, 0.0f);
 
+       
+
         printf(" min max field values %.2f, %.2f,%.2f,%.2f \n", minVal[0], maxVal[0], minVal[1], maxVal[1]);
-        printf(" range1 range2 %.2f, %.2f \n", range[0], range[1]);
-    }*/
-
-    void rescaleFieldToRange(float targetMin = -1.0f, float targetMax = 1.0f)
-    {
-        // --- Tunables to make behaviour stable across RES ---
-        const float zeroEps = 1e-6f;                 // dead-band around zero to ignore tiny noise
-        const int   N = std::max(1, RES * RES);
-        const int   minCountForBin = std::max(1, N / 100); // at least ~1% of samples to call a bin "present"
-
-        // --- Pass 1: scan stats & robust sign counts (ignore |v| < zeroEps) ---
-        float minPos = 1e6f, maxPos = -1e6f;
-        float minNeg = 1e6f, maxNeg = -1e6f;
-        float gMin = 1e6f, gMax = -1e6f;
-        int   cntPos = 0, cntNeg = 0, cntZero = 0;
-        double sum = 0.0;
-
-        for (int i = 0; i < RES; ++i)
-        {
-            for (int j = 0; j < RES; ++j)
-            {
-                float v = field[i][j];
-                sum += v;
-
-                gMin = std::min(gMin, v);
-                gMax = std::max(gMax, v);
-
-                if (v > zeroEps)
-                {
-                    ++cntPos;
-                    minPos = std::min(minPos, v);
-                    maxPos = std::max(maxPos, v);
-                }
-                else if (v < -zeroEps)
-                {
-                    ++cntNeg;
-                    minNeg = std::min(minNeg, v);
-                    maxNeg = std::max(maxNeg, v);
-                }
-                else
-                {
-                    ++cntZero; // near-zero bucket (pins to 0 in split mode)
-                }
-            }
-        }
-
-        const bool hasPos = (cntPos >= minCountForBin);
-        const bool hasNeg = (cntNeg >= minCountForBin);
-
-        // --- Case A: Mixed signs (robustly) -> split mapping, pin 0 to 0 ---
-        if (hasPos && hasNeg)
-        {
-            // include 0 as a bound so zero maps exactly to 0.0
-            float loPos = std::min(0.0f, minPos);
-            float hiPos = std::max(0.0f, maxPos);
-            float loNeg = std::min(minNeg, 0.0f);
-            float hiNeg = std::max(maxNeg, 0.0f);
-
-            float rangePos = std::max(hiPos - loPos, 1e-12f);
-            float rangeNeg = std::max(hiNeg - loNeg, 1e-12f);
-
-            for (int i = 0; i < RES; ++i)
-            {
-                for (int j = 0; j < RES; ++j)
-                {
-                    float v = field[i][j];
-
-                    if (v > zeroEps)          // positive bin => [0, +1]
-                    {
-                        float t = (v - loPos) / rangePos;    // [0..1] with 0→0
-                        float n = std::clamp(t, 0.0f, 1.0f); // guard
-                        field[i][j] = targetMin + (targetMax - targetMin) * n; // [0..+1] if defaults
-                    }
-                    else if (v < -zeroEps)     // negative bin => [-1, 0]
-                    {
-                        float t = (v - loNeg) / rangeNeg;    // [0..1] with 0→1
-                        float n = std::clamp(t, 0.0f, 1.0f);
-                        // map [0..1] so that loNeg -> -1, 0 -> 0
-                        float nSplit = -1.0f + n;            // [ -1 .. 0 ]
-                        field[i][j] = targetMin + (targetMax - targetMin) * ((nSplit + 1.0f) * 0.5f * 2.0f - 1.0f + 1.0f);
-                        // simpler: directly map nSplit ∈ [-1,0] to [targetMin, 0]:
-                        field[i][j] = ((nSplit + 1.0f) * 0.5f) * 0.0f +   // weight for 0  (drops out)
-                            (1.0f - ((nSplit + 1.0f) * 0.5f)) * targetMin; // maps -1->targetMin, 0->0
-                        // cleaner direct linear form:
-                        field[i][j] = targetMin * (1.0f - n) + 0.0f * n;     // loNeg->-1, 0->0
-                    }
-                    else                        // near zero -> exactly 0
-                    {
-                        field[i][j] = 0.0f;
-                    }
-                }
-            }
-
-            // Ensure exact endpoints reach targetMin/Max (if present)
-            // (Optional: no-op if data contains those extrema)
-
-            printf("rescaleFieldToRange: split mode | cntNeg=%d cntZero=%d cntPos=%d  "
-                "neg[%.6f,%.6f] pos[%.6f,%.6f]\n",
-                cntNeg, cntZero, cntPos, minNeg, maxNeg, minPos, maxPos);
-            return;
-        }
-
-        // --- Case B: Single-sign (or effectively single-sign) -> mean-center then map centred extrema to [-1,+1]
-        const float mean = static_cast<float>(sum / N);
-
-        float cmin = 1e6f, cmax = -1e6f;
-        for (int i = 0; i < RES; ++i)
-        {
-            for (int j = 0; j < RES; ++j)
-            {
-                float c = field[i][j] - mean;   // center by mean
-                cmin = std::min(cmin, c);
-                cmax = std::max(cmax, c);
-            }
-        }
-
-        float denom = std::max(cmax - cmin, 1e-12f); // guard constant field
-
-        for (int i = 0; i < RES; ++i)
-        {
-            for (int j = 0; j < RES; ++j)
-            {
-                float c = field[i][j] - mean;           // centered value
-                float t = (c - cmin) / denom;           // [0..1]
-                float n = t * 2.0f - 1.0f;              // [-1..+1] exact at extrema
-                // Map to [targetMin, targetMax]
-                field[i][j] = targetMin + ((n + 1.0f) * 0.5f) * (targetMax - targetMin);
-            }
-        }
-
-        printf("rescaleFieldToRange: single-sign mode | mean=%.6f  cmin=%.6f  cmax=%.6f\n",
-            mean, cmin, cmax);
+        minMax(minVal[0], maxVal[0]);
+        printf(" min max field values after rescale %.2f, %.2f \n", minVal[0], maxVal[0]);
+       // printf(" range1 range2 %.2f, %.2f \n", range[0], range[1]);
     }
+
+    //void rescaleFieldToRange(float targetMin = -1.0f, float targetMax = 1.0f)
+    //{
+    //    // --- Tunables to make behaviour stable across RES ---
+    //    const float zeroEps = 1e-6f;                 // dead-band around zero to ignore tiny noise
+    //    const int   N = std::max(1, RES * RES);
+    //    const int   minCountForBin = std::max(1, N / 100); // at least ~1% of samples to call a bin "present"
+
+    //    // --- Pass 1: scan stats & robust sign counts (ignore |v| < zeroEps) ---
+    //    float minPos = 1e6f, maxPos = -1e6f;
+    //    float minNeg = 1e6f, maxNeg = -1e6f;
+    //    float gMin = 1e6f, gMax = -1e6f;
+    //    int   cntPos = 0, cntNeg = 0, cntZero = 0;
+    //    double sum = 0.0;
+
+    //    for (int i = 0; i < RES; ++i)
+    //    {
+    //        for (int j = 0; j < RES; ++j)
+    //        {
+    //            float v = field[i][j];
+    //            sum += v;
+
+    //            gMin = std::min(gMin, v);
+    //            gMax = std::max(gMax, v);
+
+    //            if (v > zeroEps)
+    //            {
+    //                ++cntPos;
+    //                minPos = std::min(minPos, v);
+    //                maxPos = std::max(maxPos, v);
+    //            }
+    //            else if (v < -zeroEps)
+    //            {
+    //                ++cntNeg;
+    //                minNeg = std::min(minNeg, v);
+    //                maxNeg = std::max(maxNeg, v);
+    //            }
+    //            else
+    //            {
+    //                ++cntZero; // near-zero bucket (pins to 0 in split mode)
+    //            }
+    //        }
+    //    }
+
+    //    const bool hasPos = (cntPos >= minCountForBin);
+    //    const bool hasNeg = (cntNeg >= minCountForBin);
+
+    //    // --- Case A: Mixed signs (robustly) -> split mapping, pin 0 to 0 ---
+    //    if (hasPos && hasNeg)
+    //    {
+    //        // include 0 as a bound so zero maps exactly to 0.0
+    //        float loPos = std::min(0.0f, minPos);
+    //        float hiPos = std::max(0.0f, maxPos);
+    //        float loNeg = std::min(minNeg, 0.0f);
+    //        float hiNeg = std::max(maxNeg, 0.0f);
+
+    //        float rangePos = std::max(hiPos - loPos, 1e-12f);
+    //        float rangeNeg = std::max(hiNeg - loNeg, 1e-12f);
+
+    //        for (int i = 0; i < RES; ++i)
+    //        {
+    //            for (int j = 0; j < RES; ++j)
+    //            {
+    //                float v = field[i][j];
+
+    //                if (v > zeroEps)          // positive bin => [0, +1]
+    //                {
+    //                    float t = (v - loPos) / rangePos;    // [0..1] with 0→0
+    //                    float n = std::clamp(t, 0.0f, 1.0f); // guard
+    //                    field[i][j] = targetMin + (targetMax - targetMin) * n; // [0..+1] if defaults
+    //                }
+    //                else if (v < -zeroEps)     // negative bin => [-1, 0]
+    //                {
+    //                    float t = (v - loNeg) / rangeNeg;    // [0..1] with 0→1
+    //                    float n = std::clamp(t, 0.0f, 1.0f);
+    //                    // map [0..1] so that loNeg -> -1, 0 -> 0
+    //                    float nSplit = -1.0f + n;            // [ -1 .. 0 ]
+    //                    field[i][j] = targetMin + (targetMax - targetMin) * ((nSplit + 1.0f) * 0.5f * 2.0f - 1.0f + 1.0f);
+    //                    // simpler: directly map nSplit ∈ [-1,0] to [targetMin, 0]:
+    //                    field[i][j] = ((nSplit + 1.0f) * 0.5f) * 0.0f +   // weight for 0  (drops out)
+    //                        (1.0f - ((nSplit + 1.0f) * 0.5f)) * targetMin; // maps -1->targetMin, 0->0
+    //                    // cleaner direct linear form:
+    //                    field[i][j] = targetMin * (1.0f - n) + 0.0f * n;     // loNeg->-1, 0->0
+    //                }
+    //                else                        // near zero -> exactly 0
+    //                {
+    //                    field[i][j] = 0.0f;
+    //                }
+    //            }
+    //        }
+
+    //        // Ensure exact endpoints reach targetMin/Max (if present)
+    //        // (Optional: no-op if data contains those extrema)
+
+    //        printf("rescaleFieldToRange: split mode | cntNeg=%d cntZero=%d cntPos=%d  "
+    //            "neg[%.6f,%.6f] pos[%.6f,%.6f]\n",
+    //            cntNeg, cntZero, cntPos, minNeg, maxNeg, minPos, maxPos);
+    //        return;
+    //    }
+
+    //    // --- Case B: Single-sign (or effectively single-sign) -> mean-center then map centred extrema to [-1,+1]
+    //    const float mean = static_cast<float>(sum / N);
+
+    //    float cmin = 1e6f, cmax = -1e6f;
+    //    for (int i = 0; i < RES; ++i)
+    //    {
+    //        for (int j = 0; j < RES; ++j)
+    //        {
+    //            float c = field[i][j] - mean;   // center by mean
+    //            cmin = std::min(cmin, c);
+    //            cmax = std::max(cmax, c);
+    //        }
+    //    }
+
+    //    float denom = std::max(cmax - cmin, 1e-12f); // guard constant field
+
+    //    for (int i = 0; i < RES; ++i)
+    //    {
+    //        for (int j = 0; j < RES; ++j)
+    //        {
+    //            float c = field[i][j] - mean;           // centered value
+    //            float t = (c - cmin) / denom;           // [0..1]
+    //            float n = t * 2.0f - 1.0f;              // [-1..+1] exact at extrema
+    //            // Map to [targetMin, targetMax]
+    //            field[i][j] = targetMin + ((n + 1.0f) * 0.5f) * (targetMax - targetMin);
+    //        }
+    //    }
+
+    //    printf("rescaleFieldToRange: single-sign mode | mean=%.6f  cmin=%.6f  cmax=%.6f\n",
+    //        mean, cmin, cmax);
+    //}
 
 
     // -----------------------------------------

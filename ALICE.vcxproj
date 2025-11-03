@@ -32,6 +32,7 @@
     <ClInclude Include="src\alice\object.h" />
     <ClInclude Include="src\alice\utilities.h" />
     <ClInclude Include="src\userSrc\genericMLP.h" />
+    <ClInclude Include="src\userSrc\parcel.h" />
     <ClInclude Include="src\userSrc\scalarField.h" />
   </ItemGroup>
   <ItemGroup>
@@ -41,7 +42,7 @@
     <ClCompile Include="src\userSrc\sketch_chat_AStar_marchingTriangle.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_circleSDF_Fitter.cpp">
+    <ClCompile Include="src\userSrc\SKETCH_CIRCLE_SDF_FITTER.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_generic_mlp_polygonSDF_subClass_.cpp">
@@ -50,7 +51,7 @@
     <ClCompile Include="src\userSrc\sketch_CircleSDF_mlp_handCoded.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_MLP_DRL_test.cpp">
+    <ClCompile Include="src\userSrc\SKETCH_MLP_DRL_TEST.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_mlp_generic_circleFitter.cpp">
@@ -74,7 +75,7 @@
     <ClCompile Include="src\userSrc\sketch_SF_flowerPot.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_heightField.cpp">
+    <ClCompile Include="src\userSrc\SKETCH_HEIGHTFIELD.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_parcel.cpp">

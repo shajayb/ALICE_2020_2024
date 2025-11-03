@@ -701,8 +701,8 @@ void barycentric(vec &p, vec *q, int n, float *w)
 
 }
 
-enum IntersectResult { PARALLEL, COINCIDENT, NOT_INTERESECTING, INTERESECTING };
-IntersectResult Intersect_segment2d(double *x, double *y, double &u, double &v)
+enum IntersectionResult { IR_PARALLEL, IR_COINCIDENT, IR_NOT_INTERESECTING, IR_INTERESECTING };
+IntersectionResult Intersection_segment2d(double *x, double *y, double &u, double &v)
 {
 	double denom = ((y[3] - y[2]) * (x[1] - x[0])) - ((x[3] - x[2]) * (y[1] - y[0]));
 	double nume_a = ((x[3] - x[2]) * (y[0] - y[2])) - ((y[3] - y[2]) * (x[0] - x[2]));
@@ -710,10 +710,10 @@ IntersectResult Intersect_segment2d(double *x, double *y, double &u, double &v)
 
 	if (fabs(denom) < 1e-06)
 	{
-		if (fabs(nume_a) < 1e-06 && fabs(nume_b) < 1e-06)return COINCIDENT;
+		if (fabs(nume_a) < 1e-06 && fabs(nume_b) < 1e-06)return IR_COINCIDENT;
 
 		u = v = -0.0;
-		return PARALLEL; // lines are parallel
+		return IR_PARALLEL; // lines are parallel
 	}
 	u = nume_a;// ((x[3] - x[2]) * (y[0] - y[2])) - ((y[3] - y[2]) * (x[0] - x[2]));
 	u /= denom;// ((y[3] - y[2]) * (x[1] - x[0])) - ((x[3] - x[2]) * (y[1] - y[0]));
@@ -721,12 +721,12 @@ IntersectResult Intersect_segment2d(double *x, double *y, double &u, double &v)
 	v = nume_b;// ((x[1] - x[0]) * (y[0] - y[2])) - ((y[1] - y[0]) * (x[0] - x[2]));
 	v /= denom;// ((y[3] - y[2]) * (x[1] - x[0])) - ((x[3] - x[2]) * (y[1] - y[0]));
 
-	if (u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f)return INTERESECTING;
+	if (u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f)return IR_INTERESECTING;
 
-	return NOT_INTERESECTING;
+	return IR_NOT_INTERESECTING;
 }
 
-vec Intersect_linesegments(vec *pts, double &u, double &v)
+vec Intersection_linesegments(vec *pts, double &u, double &v)
 {
 	double x[4], y[4];
 	for (int i = 0; i < 4; i++)
@@ -736,7 +736,7 @@ vec Intersect_linesegments(vec *pts, double &u, double &v)
 
 	}
 
-	Intersect_segment2d(x, y, u, v);
+	Intersection_segment2d(x, y, u, v);
 	return pts[0] + (pts[1] - pts[0])* u;
 }
 
@@ -792,7 +792,7 @@ vec Intersect_linesegments(vec *pts, double &u, double &v, bool &closeToVertical
 	}
 
 	// compute intersection
-	vec pt = Intersect_linesegments(pts, u, v);
+	vec pt = Intersection_linesegments(pts, u, v);
 
 	//transform back to original planem, if previous inverted;
 	if (closeToVerticalPlane)
@@ -805,7 +805,7 @@ vec Intersect_linesegments(vec *pts, double &u, double &v, bool &closeToVertical
 }
 
 // obsolete .. too many sqrt calcs... and conditionals; use Intersect_linesegments(vec *pts, double &u, double &v, bool &closeToVerticalPlane );
-vec Intersect_linesegments(vec *pts, double &lambda)
+vec Intersection_linesegments(vec *pts, double &lambda)
 {
 	vec v1 = (pts[1] - pts[0]);// .normalise();
 	vec v2 = (pts[3] - pts[2]);// .normalise();

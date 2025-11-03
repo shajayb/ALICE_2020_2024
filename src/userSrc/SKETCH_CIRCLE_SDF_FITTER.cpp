@@ -819,7 +819,7 @@ void drawCircles()
 //-------------------------------
 void setup()
 {
-    loadPolygonFromCSV("data/polygon.txt");
+    loadPolygonFromCSV("data/polygonx.txt");
     initilaiseCircleCenters();       // initial greedy placement (for blue circles)
     samplePoints();          // prepare training set (trainingSamples and sdfGT)
     optimiseCircleCenters(); // run initial gradient descent (for blue circles)

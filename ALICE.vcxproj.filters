@@ -13,8 +13,15 @@
     <ClInclude Include="src\alice\object.h">
       <Filter>MVC</Filter>
     </ClInclude>
-    <ClInclude Include="src\userSrc\scalarField.h" />
-    <ClInclude Include="src\userSrc\genericMLP.h" />
+    <ClInclude Include="src\userSrc\scalarField.h">
+      <Filter>IMP_SKETCHES</Filter>
+    </ClInclude>
+    <ClInclude Include="src\userSrc\genericMLP.h">
+      <Filter>IMP_SKETCHES</Filter>
+    </ClInclude>
+    <ClInclude Include="src\userSrc\parcel.h">
+      <Filter>IMP_SKETCHES</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="MVC">
@@ -23,25 +30,21 @@
     <Filter Include="sketches">
       <UniqueIdentifier>{1bcad749-f2dd-456f-9707-396d94666e35}</UniqueIdentifier>
     </Filter>
+    <Filter Include="IMP_SKETCHES">
+      <UniqueIdentifier>{7fee8933-31ce-4473-be92-e18c303c7d31}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\userSrc\sketch_MLP_DRL_test.cpp" />
     <ClCompile Include="src\userSrc\sketch_3DfieldSlicer.cpp">
       <Filter>sketches</Filter>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_chat_AStar_marchingTriangle.cpp">
       <Filter>sketches</Filter>
     </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_circleSDF_Fitter.cpp">
-      <Filter>sketches</Filter>
-    </ClCompile>
     <ClCompile Include="src\userSrc\sketch_CircleSDF_mlp_handCoded.cpp">
       <Filter>sketches</Filter>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_generic_mlp_polygonSDF_subClass_.cpp">
-      <Filter>sketches</Filter>
-    </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_heightField.cpp">
       <Filter>sketches</Filter>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_mlp_generic_circleFitter.cpp">
@@ -69,5 +72,14 @@
       <Filter>sketches</Filter>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_SF_blends.cpp" />
+    <ClCompile Include="src\userSrc\SKETCH_MLP_DRL_TEST.cpp">
+      <Filter>IMP_SKETCHES</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\SKETCH_CIRCLE_SDF_FITTER.cpp">
+      <Filter>IMP_SKETCHES</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\SKETCH_HEIGHTFIELD.cpp">
+      <Filter>IMP_SKETCHES</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
