@@ -723,9 +723,9 @@ public:
 	}
 
 	zVector norm;
-	void drawBox()
+	void display()
 	{
-		glPointSize(5);
+		glPointSize(1);
 
 		//drawLine and drawPoint accept data of type : Alice::vec
 		// so we need to convert zVector to Alice::vec;

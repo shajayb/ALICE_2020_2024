@@ -74,7 +74,6 @@ bool loadPolygonFromFile(const std::string& filePath, std::vector<zVector>& poly
 }
 
 
-
 #include "scalarField.h"
 #include "parcel.h"
 
@@ -1413,11 +1412,11 @@ void draw()
 
     // ---------parcels
 
-    for (auto& parcel : plots)parcel.drawBox();
+    for (auto& parcel : plots)parcel.display();
 
     wireFrameOn();
         SG.drawBuckets();
-        SG.drawParticlesInBuckets();
+        //SG.drawParticlesInBuckets();
     wireFrameOff();
 
    // ----------------------- nn
@@ -1512,6 +1511,8 @@ void draw()
 
 std::vector<std::vector<zVector>> contour_bands;
 
+
+double prevLoss = 0.0;
 void keyPress(unsigned char k, int xm, int ym)
 {
     
@@ -1522,6 +1523,7 @@ void keyPress(unsigned char k, int xm, int ym)
 
         int id = 0;
 
+        plots.clear();
         for( auto &pose : poses)
         {
             plot.centerOfBox = pose.c;
@@ -1533,10 +1535,6 @@ void keyPress(unsigned char k, int xm, int ym)
         }
     }
 
-    if (k == 'o')
-    {
-        plots[0].makeCentersEquiDistant(plots);
-    }
     
     if (k == 'e')
     {
@@ -1547,23 +1545,30 @@ void keyPress(unsigned char k, int xm, int ym)
                 parcels[i].parcel_parcel_intersect(parcels[j]);*/
 
         for (auto& parcel : plots)parcel.smooth();
+        for (auto& plot : plots)
+            printf("%.4f \n", plot.computeParcelArea());
+       
 
         // ------------- update SG 
 
-
+        // clear
         SG.clearBuckets();
         SG.np = 0;
 
-        for (auto& parcel : plots)
-            for (int i = 0; i < parcel.nPoints; i++)
-            {
-                SG.addPosition(parcel.boxPoints[i]);
-            }
+        // fill
+            for (auto& parcel : plots)
+                for (int i = 0; i < parcel.nPoints; i++)
+                {
+                    SG.addPosition(parcel.boxPoints[i]);
+                }
 
-        for( auto p : nn.polygon)SG.addPosition(p);
+            for( auto p : nn.polygon)SG.addPosition(p);
 
+        // re-partition
         SG.PartitionParticlesToBuckets();
 
+
+        
     }
     
     //------------------------------ N
@@ -1669,6 +1674,12 @@ void keyPress(unsigned char k, int xm, int ym)
         nn.computeGradient(dummyInput, dummyTarget, grad);
 
         // Backward update
+        printf(" %.4f,%.4f \n", fabs(loss - prevLoss), learningRate);
+        
+        if (fabs(loss - prevLoss) < 1e-2) learningRate *= 1.1; 
+
+        learningRate = ofClamp(learningRate, 1e-2, 0.15);
+        prevLoss = loss;
         nn.backward(grad, learningRate);
 
         // Debug

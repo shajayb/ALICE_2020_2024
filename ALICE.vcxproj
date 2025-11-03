@@ -60,6 +60,7 @@
     <ClCompile Include="src\userSrc\sketch_MLP_SDF_latentspace.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="src\userSrc\Sketch_ON.cpp" />
     <ClCompile Include="src\userSrc\sketch_polygonSDF_mlp_tinyDNN.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
@@ -76,7 +77,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\userSrc\SKETCH_HEIGHTFIELD.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_parcel.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
@@ -288,7 +289,7 @@
     <Link>
       <AdditionalDependencies>Ws2_32.lib;glew32.lib;ALICE_DLL.lib;opengl32.lib;gl2ps.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)EXE\$(ProjectName).exe</OutputFile>
-      <AdditionalLibraryDirectories>x64/Release;src/gl2ps;src/;src/glew/lib;src/alice;src/freeglut;C:\Users\FB\Desktop\ALICE\src\ZSPACE\depends\SQLITE\lib;src/fftw;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>x64/Release;src/gl2ps;src/;src/glew/lib;src/alice;src/freeglut;C:\Users\FB\Desktop\ALICE\src\ZSPACE\depends\SQLITE\lib;src/fftw;C:/Users/shajay.b/source/repos/opennurbs/bin/x64/Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>

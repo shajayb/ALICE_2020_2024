@@ -71,7 +71,6 @@
     <ClCompile Include="src\userSrc\sketch_SF_flowerPot.cpp">
       <Filter>sketches</Filter>
     </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_SF_blends.cpp" />
     <ClCompile Include="src\userSrc\SKETCH_MLP_DRL_TEST.cpp">
       <Filter>IMP_SKETCHES</Filter>
     </ClCompile>
@@ -81,5 +80,9 @@
     <ClCompile Include="src\userSrc\SKETCH_HEIGHTFIELD.cpp">
       <Filter>IMP_SKETCHES</Filter>
     </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_SF_blends.cpp">
+      <Filter>sketches</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\Sketch_ON.cpp" />
   </ItemGroup>
 </Project>
