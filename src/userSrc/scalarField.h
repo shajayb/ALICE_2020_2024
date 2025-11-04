@@ -1,5 +1,10 @@
-﻿#pragma once
-#pragma once
+﻿
+#ifndef _SCALAR_FIELD_
+#define _SCALAR_FIELD_
+
+
+//#pragma once
+
 
 #include <vector>
 #include <algorithm>
@@ -71,7 +76,7 @@ public:
 
   
 
-    static const int RES = 100;
+    static const int RES = 150;
     int div = 2; 
 
     zVector gridPoints[RES][RES];
@@ -858,7 +863,7 @@ public:
 
 
     //---------------------------------------------
-    zVector getGradient(int i, int j)
+     zVector getGradient(int i, int j)
     {
         return gradient[i][j];
     }
@@ -1259,3 +1264,6 @@ public:
     }
 
 };
+
+
+#endif // !_SCALAR_FIELD_

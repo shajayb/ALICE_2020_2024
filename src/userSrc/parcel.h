@@ -72,7 +72,7 @@
 
 //
 
-#define nPoly 64
+#define nPoly 32
 #define num_centers 50
 double width = 1.0;
 

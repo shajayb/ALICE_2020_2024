@@ -1,4 +1,7 @@
-#pragma once
+#ifndef _GENERIC_MLP_
+#define _GENERIC_MLP_
+
+
 #include <vector>
 #include <functional>
 #include <random>
@@ -307,3 +310,45 @@ public:
     //}
 
 };
+
+
+void runUnitTest()
+{
+    MLP net(2, { 8, 8 }, 1);
+
+    std::vector<std::vector<float>> X, Y;
+    for (int i = 0; i < 100; ++i)
+    {
+        float x0 = ((float)rand() / RAND_MAX) * 6.28f - 3.14f;
+        float x1 = ((float)rand() / RAND_MAX) * 6.28f - 3.14f;
+        float y = std::sin(x0) + std::cos(x1);
+        X.push_back({ x0, x1 });
+        Y.push_back({ y });
+    }
+
+    float lr = 0.01f;
+    for (int epoch = 0; epoch < 1200; ++epoch)
+    {
+        float totalLoss = 0.0f;
+        for (int i = 0; i < X.size(); ++i)
+        {
+            std::vector<float> grads;
+            net.computeGradient(X[i], Y[i], grads);
+            net.backward(grads, lr);
+            auto out = net.forward(X[i]);
+            totalLoss += net.computeLoss(out, Y[i]);
+        }
+        totalLoss /= X.size();
+        if (epoch % 50 == 0)
+            std::cout << "Epoch " << epoch << " Avg Loss: " << totalLoss << std::endl;
+    }
+
+    std::cout << "Test prediction:\n";
+    for (int i = 0; i < 5; ++i)
+    {
+        auto out = net.forward(X[i]);
+        std::cout << "Input: (" << X[i][0] << ", " << X[i][1] << ") Target: " << Y[i][0] << " Pred: " << out[0] << std::endl;
+    }
+}
+
+#endif
