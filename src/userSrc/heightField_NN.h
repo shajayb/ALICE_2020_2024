@@ -15,7 +15,7 @@ using namespace zSpace;
 #include "genericMLP.h"
 
 
-float radius = 5.0f; // =  SDF loss ( blendedCircle radius)
+float radius = 1.0f; // =  SDF loss ( blendedCircle radius)
 
 struct Pose2D
 {
@@ -23,6 +23,36 @@ struct Pose2D
     zVector v;   // 2D vector (vx, vy, 0)
 };
 
+zVector gradientAt(zVector& p, const std::vector<zVector>& poly)
+{
+    float minDist = 1e6f;
+    int n = poly.size();
+    zVector grad(0, 0, 0);
+
+    for (int i = 0; i < n; ++i)
+    {
+        zVector a = poly[i];
+        zVector b = poly[(i + 1) % n];
+
+        // project p onto edge ab
+        zVector ab = b - a;
+        zVector ap = p - a;
+
+        float t = std::max(0.0f, std::min(1.0f, ap * ab / (ab * ab)));
+        zVector proj = a + ab * t;
+
+        float d = p.distanceTo(proj);
+        if (d < minDist)
+        {
+            minDist = d;
+            grad = (proj - p);
+            grad.normalize();
+        }
+    }
+
+    // Signed: negative if outside
+    return grad;
+}
 
 float signedDistanceToPolygon(zVector& p, const std::vector<zVector>& poly)
 {
@@ -94,7 +124,7 @@ public:
     heightfieldNN(int _n)
     {
         n = _n;
-        initialize(2 * n, { 16, 16 }, 4 * n); // dummy input = 1; output = n × (center + dir)
+        initialize(2 * n, { 16 }, 4 * n); // dummy input = 1; output = n × (center + dir)
     }
 
     // ------------------
@@ -139,10 +169,7 @@ public:
                 zVector pt = htField.gridPoints[i][j];
 
                 if (pointInsidePolygon(pt, polygon))
-                {
                     htField.field[i][j] = evalPolygonSDF(pt, polygon);
-                    cout << "yes" << endl;
-                }
 
             }
         }
@@ -170,9 +197,9 @@ public:
         int gridResX = 50;
         int gridResY = 50;
 
-        for (int i = 0; i < gridResX; ++i)
+        for (int i = 0; i < gridResX; i+= 1)
         {
-            for (int j = 0; j < gridResY; ++j)
+            for (int j = 0; j < gridResY; j+=1)
             {
                 float u = (float)i / (gridResX - 1);
                 float v = (float)j / (gridResY - 1);
@@ -339,6 +366,17 @@ public:
 
             poses[i].c = rawCenter ? raw : mapped;
             poses[i].c += sdfSample_centroid;
+
+            //if (!pointInsidePolygon(poses[i].c, polygon))
+            //{
+            //  zVector grad=  gradientAt(poses[i].c, polygon);
+            //  float d = evalPolygonSDF(poses[i].c, polygon);
+            //  grad *= (d * 2);
+
+            //  //poses[i].c += grad;
+            //  poses[i].c = sdfSample_centroid;
+            //}
+
             poses[i].v = rawDir;
             poses[i].v.normalize();
         }
@@ -429,7 +467,7 @@ public:
         if (sdfLoss < 150)sdfLoss = 0;*/
 
 
-        printf(" %.4f,%.4f,%.4f \n", sdfLoss, minD, PIP_pen);
+       // printf(" %.4f,%.4f,%.4f \n", sdfLoss, minD, PIP_pen);
 
         //if (minD > 1) sdfLoss = minD;
 

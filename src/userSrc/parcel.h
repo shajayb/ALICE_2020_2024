@@ -72,8 +72,8 @@
 
 //
 
-#define nPoly 32
-#define num_centers 50
+#define nPoly 75
+#define num_centers 60
 double width = 1.0;
 
 int insidePolygon(zVector* polygon, int N, zVector& p, int bound)
@@ -249,8 +249,8 @@ public:
 	bool boolMove[nPoly];
 	int id_u, id_v;
 
-	float normScale = 0.25;
-	float collisionRad = 0.75;
+	float normScale = 0.01;
+	float collisionRad = 0.5;
 	bool flipNormals_always = false;
 
 	float restLength = 0.2;
@@ -302,6 +302,16 @@ public:
 				boxPoints[i] = vertexPositions[i];
 				boolMove[i] = true;
 			}
+		}
+	}
+
+	void importPrimitive(vector<zVector>& polygon)
+	{
+		nPoints = polygon.size();
+		for (int i = 0; i < nPoints; i++)
+		{
+			boxPoints[i] = polygon[i];
+			boolMove[i] = true;
 		}
 	}
 
@@ -466,6 +476,8 @@ public:
 
 			if (boolMove[i])boxPoints[i] += np;
 
+			boolMove[i] = true; // reset;
+
 			//for (auto& parcel : AB)
 			{
 				//if (parcel.id_u != id_u)
@@ -547,7 +559,8 @@ public:
 		//	}
 		//}
 
-		//computeNormals();
+		computeNormals();
+		//flipNormals();
 	}
 
 	void parcel_All_parcel_intersect(vector<parcel>& AB)
@@ -660,10 +673,11 @@ public:
 		if (n_cen >= num_centers)n_cen = 0;
 	}
 
-	void makeCentersEquiDistant(vector<parcel>& plots) // not working
+	void makeCentersEquiDistant(vector<parcel>& plots , vector<zVector>&polygon) // not working
 	{
 		// reset forces
-		for (int i = 0; i < n_cen; i++)forces[i] = zVector(0, 0, 0);
+		
+		for (int i = 0; i < plots.size(); i++)forces[i] = zVector(0, 0, 0);
 
 		//calculate & store repulsive force per point
 		for (int i = 0; i < plots.size(); i++)
@@ -685,6 +699,13 @@ public:
 			}
 		}
 
+		/*for (int i = 0; i < plots.size(); i++)
+		{
+			zVector grad = gradientAt(plots[i].centerOfBox, polygon);
+			grad = grad ^ zVector(0, 0, -1);
+			grad.normalize();
+			forces[i] += grad * 1e-2;
+		}*/
 		// calculate the maximum and minimum magnitude of reuplisve force
 		normaliseForces();
 
@@ -692,8 +713,10 @@ public:
 		for (int i = 0; i < plots.size(); i++)
 			if (forces[i].length() < 1)
 			{
-				plots[i].centerOfBox += forces[i];
-				//if (!insidePolygon(boxPoints, nPoints, centerPoints[i], 0))centerPoints[i] -= forces[i] * 2;
+				if (insidePolygon(polygon.data(), polygon.size(), plots[i].centerOfBox, 0))
+					plots[i].centerOfBox += forces[i];
+				
+				//centerPoints[i] -= forces[i] * 2;
 
 			}
 
@@ -730,7 +753,12 @@ public:
 		//drawLine and drawPoint accept data of type : Alice::vec
 		// so we need to convert zVector to Alice::vec;
 
-		drawPoint(zVecToAliceVec(centerOfBox));
+		glPointSize(5);
+
+			drawPoint(zVecToAliceVec(centerOfBox));
+		
+		glPointSize(1);
+		
 		drawLine(zVecToAliceVec(centerOfBox), zVecToAliceVec(centerOfBox + directionOfBox * 3));
 
 		for (int i = 0; i < nPoints; i++)

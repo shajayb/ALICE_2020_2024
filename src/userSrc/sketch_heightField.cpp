@@ -94,7 +94,7 @@ bool loadPolygonFromFile(const std::string& filePath, std::vector<zVector>& poly
 
 
 
-// - ----------- OTHER CUSTOM CLASSES  -----------
+// - ----------- OTHER CUSTOM FUNCTIONS  -----------
 
 #include "scalarField.h"
 #include "HeightField.h"
@@ -173,10 +173,20 @@ void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
     // bool ok = model.Write(outfile, 60);
 
 
-    ok ? printf("Wrote 3dm: simple_polyline.3dm\n") : printf("Failed to write 3dm file.\n");
+    ok ? printf("Wrote 3dm: simplest_polyline.3dm\n") : printf("Failed to write 3dm file.\n");
 
     ON::End();
 
+}
+
+void drawText(string& str, float x = 50, float y = 100)
+{
+    unsigned int i;
+    glRasterPos2f(x, y);
+
+
+    for (i = 0; i < str.length(); i++)
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_10, str[i]);
 }
 
 
@@ -210,6 +220,9 @@ spaceGrid SG;
 bool compute = false;
 double prevLoss = 0.0;
 
+zVector grad;
+zVector gradPt;
+
 // -------------------------
 
 void setup()
@@ -241,11 +254,13 @@ void setup()
     myHeightField.rescalePoints(polygon);
     myHeightField.trimFieldWithPolygon(polygon);
     
+    
+        
   
-
+    myHeightField.computeGradient();
     // ----------- NN ----------------
    
-    nn = heightfieldNN(25); // or however many poses you want
+    nn = heightfieldNN(30); // or however many poses you want
 
     //  ----- SDF loss polygon
     nn.setTargetPolygon(polygon);
@@ -309,6 +324,12 @@ void draw()
     myHeightField.drawSamplePoints();
     //myHeightField.drawFieldPoints(false, false);
 
+    //myHeightField.computeGradient();
+   // myHeightField.drawFieldPoints(true, false);
+
+
+
+
     // ---------parcels
 
     for (auto& parcel : plots)parcel.display();
@@ -333,11 +354,21 @@ void draw()
    {
        drawPoint(zVecToAliceVec(pose.c ));
       // drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + pose.v * 5.0));
+       zVector dir = myHeightField.gradientAt(pose.c);
+       dir.normalize();
+       drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + dir * 2.0));
+
        drawCircle(zVecToAliceVec(pose.c), radius, 32);
    }
    glPointSize(1);
 
+   setup2d();
 
+        char s[200];
+          sprintf(s, "%.4f", prevLoss);
+         drawText(string(s), 50, 450);
+
+   restore3d();
 
 
 
@@ -374,11 +405,11 @@ void draw()
 
     //glTranslatef(120, 0, 0);
     //{
-    //    myHeightField1.drawFieldPoints(false, false);
+    //   /* myHeightField1.drawFieldPoints(false, false);
 
     //    glColor3f(0, 0, 0);
     //    float iso = ofMap(0, myHeightField.MLS_zMin, myHeightField.MLS_zMax, 0, 1);
-    //    myHeightField1.drawIsocontours(iso);
+    //    myHeightField1.drawIsocontours(iso);*/
     //  
     //}
 
@@ -392,12 +423,23 @@ void draw()
 
     //}
 
-    //
+    
 
 }
 
+
+
+
 void keyPress(unsigned char k, int xm, int ym)
 {
+    if (k == 'g')
+    {
+        gradPt = nn.sdfSample_centroid + zVector(ofRandom(-5, 5), ofRandom(-5, 5), 0);
+
+        grad = myHeightField.gradientAt( gradPt );
+        grad.normalize();
+       grad *= 3; 
+    }
 
     // --------------- WRITE 3DM ---------------
 
@@ -412,6 +454,15 @@ void keyPress(unsigned char k, int xm, int ym)
     
     if (k == 'p') // populate
     {
+        polygon.clear();
+        loadPolygonFromFile("data/cabin.txt", polygon);
+
+        for (auto& pt : polygon)
+        {
+            pt *= myHeightField.scale;
+        }
+        
+        ///
         std::vector<Pose2D> poses;
         nn.extractPoses(output, poses, true);
 
@@ -421,9 +472,21 @@ void keyPress(unsigned char k, int xm, int ym)
         for( auto &pose : poses)
         {
             plot.centerOfBox = pose.c;
-            plot.directionOfBox = zVector(1, 1, 0);;
+
+            zVector dir = myHeightField.gradientAt(pose.c);
+            dir.normalize();
+            dir.z = 0;
+            dir = dir ^ zVector(0, 0, 1);
+            dir.normalize();
+            plot.directionOfBox = dir;
+
+
             plot.setDefaultBox();
+            //plot.importPrimitive(polygon);
             plot.transformBox();
+           // plot.flipNormals();
+            
+            
             plot.id_u = id++;
             plots.push_back(plot);
         }
@@ -458,6 +521,12 @@ void keyPress(unsigned char k, int xm, int ym)
         // re-partition
         SG.PartitionParticlesToBuckets();
         
+    }
+
+
+    if (k == 'o')
+    {
+        plots[0].makeCentersEquiDistant(plots,nn.polygon);
     }
     
     // --------------- NUERAL NET  ---------------
@@ -601,7 +670,28 @@ void keyPress(unsigned char k, int xm, int ym)
         myHeightField2.addVoronoi(sites);
        ///myHeightField2.subtract(myHeightField1);
        // myHeightField2.normalise();
-        myHeightField2.rescaleFieldToRange(-1, 1);
+
+       
+ 
+        //for (int i = 0; i < myHeightField2.RES; i++)
+        //{
+        //    for (int j = 0; j < myHeightField2.RES; j++)
+        //    {
+
+        //        zVector pt = myHeightField2.gridPoints[i][j];
+
+        //        float d_v = myHeightField2.field[i][j];
+        //        //float d_c = blendOrientedBoxSDFs(pt, centers, radii);; // blendCircleSDFs(pt, centers, radii, smoothK);//
+        //        float d_p = evalPolygonSDF(pt,nn.polygon) + 3;
+
+
+        //        myHeightField2.field[i][j] = min(d_v, -d_p); //  min(min(-d_v, d_c), -d_p); //  d_c;;/// min(d_c, -d_p); // min(d_v, -d_p);// min(min(-d_v, d_c), -d_p);
+        //        //generatedField_1.field[i][j] = min(generatedField_1.field[i][j], -d_p);
+        //    }
+        //}
+
+        //myHeightField2.rescaleFieldToRange(-1, 1);
+       
     }
 
     

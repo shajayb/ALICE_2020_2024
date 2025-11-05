@@ -402,7 +402,6 @@ public:
         }
     }
 
-
     void normalise()
     {
         float mn = 1e6f, mx = -1e6f;
@@ -428,8 +427,6 @@ public:
             }
         }
     }
-
-
     void minMax( float &mn, float &mx)
     {
         mn = 1e6; mx = -mn;
@@ -441,6 +438,7 @@ public:
                 mx = max(v, mx);
             }
     }
+
     void rescaleFieldToRange(float targetMin = -1.0f, float targetMax = 1.0f)
     {
         float minVal[2] = { 1e6f,  1e6f };
@@ -915,6 +913,23 @@ public:
          float dy = sampleAt(p.x, p.y + eps) - sampleAt(p.x, p.y - eps);
          return zVector(dx, dy, 0.0f) * 0.5f;
      }
+     //---------------------------------------------
+     
+     vector<zVector> streamLine;
+     void integrateStreamLine(zVector startPt)
+     {
+         zVector pt = startPt;
+         streamLine.clear();
+         zVector grad;
+         for (int i = 0; i < 5000; i++)
+         {
+             grad = gradientAt(pt);
+             grad.normalize();
+             grad *= -1;
+             pt += grad;
+             streamLine.push_back(pt);
+         }
+     }
 
     //---------------------------------------------
 
@@ -1160,6 +1175,17 @@ public:
 
     //---------------------------------------------
 
+    void drawStreamLine()
+    {
+        for (int i = 0; i < streamLine.size(); i++)
+        {
+            int nxt = (i + 1) % streamLine.size();
+
+            drawLine(zVecToAliceVec(streamLine[i]), zVecToAliceVec(streamLine[nxt]));
+        }
+
+    }
+
     char s[20];
     void drawFieldPoints(bool drawGradient = false, bool debug = false)
     {
@@ -1176,7 +1202,7 @@ public:
 
                 //glColor3f(field[i][j], 0, 0);
                 glColor3f(r, g, b);
-                drawPoint(zVecToAliceVec(gridPoints[i][j]));
+                drawPoint( zVecToAliceVec(gridPoints[i][j]) );
 
                 if (debug)
                 {
@@ -1190,7 +1216,7 @@ public:
                     zVector grad = gradient[i][j];
                     grad.normalize();
 
-                    drawLine(pt , pt + zVecToAliceVec(grad) * 1);
+                    drawLine(pt , pt + zVecToAliceVec(grad) * 0.4);
                 }
             }
         }
