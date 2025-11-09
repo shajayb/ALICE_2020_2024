@@ -23,7 +23,7 @@ struct Pose2D
     zVector v;   // 2D vector (vx, vy, 0)
 };
 
-zVector gradientAt(zVector& p, const std::vector<zVector>& poly)
+zVector gradientAt(zVector& p,  std::vector<zVector>& poly)
 {
     float minDist = 1e6f;
     int n = poly.size();
@@ -54,7 +54,7 @@ zVector gradientAt(zVector& p, const std::vector<zVector>& poly)
     return grad;
 }
 
-float signedDistanceToPolygon(zVector& p, const std::vector<zVector>& poly)
+float signedDistanceToPolygon(zVector& p,  std::vector<zVector>& poly)
 {
     float minDist = 1e6f;
     int n = poly.size();
@@ -82,11 +82,11 @@ float signedDistanceToPolygon(zVector& p, const std::vector<zVector>& poly)
 // Evaluates the SDF of the given polygon
 float evalPolygonSDF(zVector& p, std::vector<zVector>& poly)
 {
-    return signedDistanceToPolygon(const_cast<zVector&>(p), poly);
+    return signedDistanceToPolygon(_cast<zVector&>(p), poly);
 }
 
 // Computes blended SDF from all circles defined by pose centers
-float evalBlendedCircleSDF(zVector& p, const std::vector<Pose2D>& poses, float radius)
+float evalBlendedCircleSDF(zVector& p,  std::vector<Pose2D>& poses, float radius)
 {
     float sdf = 1e6f;
 
@@ -281,25 +281,25 @@ public:
         }
     }
 
-    void setInputSeeds(const std::vector<float>& seeds)
+    void setInputSeeds( std::vector<float>& seeds)
     {
         poseSeeds = seeds;
     }
 
-    void setTargetPolygon(const std::vector<zVector>& poly)
+    void setTargetPolygon( std::vector<zVector>& poly)
     {
         polygon = poly;
     }
     // ------------------
 
-    void computePolygonBBox(const std::vector<zVector>& polygon, zVector& bmin, zVector& bmax)
+    void computePolygonBBox( std::vector<zVector>& polygon, zVector& bmin, zVector& bmax)
     {
         if (polygon.empty()) return;
 
         bmin = zVector(1e6, 1e6, 0);
         bmax = zVector(-1e6, -1e6, 0);
 
-        for (const auto& p : polygon)
+        for ( auto& p : polygon)
         {
             bmin.x = std::min(bmin.x, p.x);
             bmin.y = std::min(bmin.y, p.y);
@@ -316,7 +316,7 @@ public:
         // --- Compute polygon bounding box (target range)
         zVector bmin(1e6, 1e6, 0);
         zVector bmax(-1e6, -1e6, 0);
-        for (const auto& p : polygon)
+        for ( auto& p : polygon)
         {
             bmin.x = std::min(bmin.x, p.x);
             bmin.y = std::min(bmin.y, p.y);
@@ -337,7 +337,7 @@ public:
         // --- Compute input range of raw centers
         zVector inMin(1e6, 1e6, 0);
         zVector inMax(-1e6, -1e6, 0);
-        for (const auto& c : rawCenters)
+        for ( auto& c : rawCenters)
         {
             inMin.x = std::min(inMin.x, c.x);
             inMin.y = std::min(inMin.y, c.y);
@@ -352,7 +352,7 @@ public:
         // --- Remap raw centers to polygon bounding box
         for (int i = 0; i < n; ++i)
         {
-            const zVector& raw = rawCenters[i];
+             zVector& raw = rawCenters[i];
 
             float u = (raw.x - inMin.x) / rangeX;
             float v = (raw.y - inMin.y) / rangeY;
@@ -481,7 +481,7 @@ public:
 
         // 2) Central-difference step. 
         //    Because you scale centers by 100 in extractPoses(), use a slightly larger eps.
-        const float eps = 1e-2f;
+         float eps = 1e-2f;
 
         gradOut.assign(outputDim, 0.0f);
 
@@ -536,7 +536,7 @@ public:
         glLineWidth(2.0f);
 
         glBegin(GL_LINE_LOOP);
-        for (const zVector& pt : polygon)
+        for ( zVector& pt : polygon)
         {
             glVertex3f(pt.x, pt.y, pt.z);
         }

@@ -28,7 +28,7 @@ zVector AliceVecToZvec(Alice::vec& in)
 class ScalarField3DSlice
 {
 public:
-    static const int RES = 100;
+    static  int RES = 100;
     zVector gridPoints[RES][RES];
     float field[RES][RES];
     std::vector<std::pair<zVector, zVector>> isolines;

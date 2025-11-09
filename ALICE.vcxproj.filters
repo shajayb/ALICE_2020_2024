@@ -90,5 +90,6 @@
       <Filter>sketches</Filter>
     </ClCompile>
     <ClCompile Include="src\userSrc\Sketch_ON.cpp" />
+    <ClCompile Include="src\userSrc\sketch_SDF_DCT_AEC_PCA.cpp" />
   </ItemGroup>
 </Project>

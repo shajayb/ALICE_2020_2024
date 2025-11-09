@@ -75,7 +75,7 @@ float polygonSDF(zVector& p, std::vector<zVector>& poly)
     return minDist * (isInsidePolygon(p, poly) ? -1.0f : 1.0f);
 }
 
-void loadPolygonFromCSV(const std::string& filename, vector<zVector> &polygon)
+void loadPolygonFromCSV( std::string& filename, vector<zVector> &polygon)
 {
     polygon.clear();
     std::ifstream file(filename);
@@ -278,7 +278,7 @@ void initializeMLP()
     int output_dim = NUM_CENTERS * 2;
     std::vector<int> hidden_dims = { 8 };
 
-    mlp = PolygonSDF_MLP(input_dim, hidden_dims, output_dim); // assumes MLP constructor initializes weights/biases
+    mlp = PolygonSDF_MLP(input_dim, hidden_dims, output_dim); // assumes MLP ructor initializes weights/biases
     mlp_input_data.assign(input_dim, 1.0f); // or use 0.0f for strict zero-input
     mlp.number_sdf = NUM_CENTERS;
 

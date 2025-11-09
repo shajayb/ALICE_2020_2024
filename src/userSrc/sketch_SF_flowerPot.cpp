@@ -74,9 +74,9 @@ public:
                 zVector pt = gridPoints[i][j];
                 float minDist = 1e6f;
 
-                for (const auto& c : centers)
+                for ( auto& c : centers)
                 {
-                    float d = pt.distanceTo(zVector(c));  // copy to avoid const-ref issue
+                    float d = pt.distanceTo(zVector(c));  // copy to avoid -ref issue
                     float sdf = d - sdfRadius;
                     minDist = std::min(minDist, sdf);
                 }
@@ -111,7 +111,7 @@ public:
         animationSpeed = s;
     }
 
-    void setTargetForCenter(int index, const zVector& target)
+    void setTargetForCenter(int index,  zVector& target)
     {
         if (index >= 0 && index < targetCenters.size())
         {
@@ -119,7 +119,7 @@ public:
         }
     }
 
-    void setAllTargets(const std::vector<zVector>& targets)
+    void setAllTargets( std::vector<zVector>& targets)
     {
         int count = std::min(int(targetCenters.size()), int(targets.size()));
         for (int i = 0; i < count; i++)
@@ -143,7 +143,7 @@ public:
         }
     }
 
-    void exportStackedContoursAsCSV(const std::string& filename = "stackedContours.csv")
+    void exportStackedContoursAsCSV( std::string& filename = "stackedContours.csv")
     {
         std::ofstream out(filename);
         if (!out.is_open())
@@ -155,7 +155,7 @@ public:
         for (size_t layerIdx = 0; layerIdx < stackedContours.size(); ++layerIdx)
         {
             out << "Layer_" << layerIdx << "\n";
-            for (const auto& pt : stackedContours[layerIdx])
+            for ( auto& pt : stackedContours[layerIdx])
             {
                 out << std::fixed << std::setprecision(6)
                     << pt.x << "," << pt.y << "," << pt.z << "\n";
@@ -178,7 +178,7 @@ public:
 
         int cnt = 0;
 
-        for (const auto& contour : stackedContours)
+        for ( auto& contour : stackedContours)
         {
             if (contour.size() < 3) continue; // need at least a triangle
 
@@ -188,14 +188,14 @@ public:
             int startIndex = 0;
 
             // Add contour points
-            for (const auto& pt : contour)
+            for ( auto& pt : contour)
             {
-                CM_positions.push_back(zVector(pt)); // make non-const copy
+                CM_positions.push_back(zVector(pt)); // make non- copy
             }
 
             // Generate fan from center
             zVector center(0, 0, 0);
-            for (const auto& pt : contour) center += pt;
+            for ( auto& pt : contour) center += pt;
             center /= contour.size();
             CM_positions.push_back(center);
             int centerIndex = CM_positions.size() - 1;
@@ -326,7 +326,7 @@ public:
         {
             glPointSize(8);
             glColor3f(1, 0, 0);
-            for (const auto& c : centers)
+            for ( auto& c : centers)
             {
                 drawPoint(zVecToAliceVec(zVector(c)));
             }

@@ -76,7 +76,7 @@ void initializeFields()
 
 void computeVelocityFieldFromSinkhorn()
 {
-    const int N = RES * RES;
+     int N = RES * RES;
     std::vector<float> mu(N), nu(N);
     std::vector<float> K(N * N);
     std::vector<float> u(N, 1.0f), v(N, 1.0f);

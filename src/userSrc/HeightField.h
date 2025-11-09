@@ -15,6 +15,7 @@
 using namespace zSpace;
 
 #include "scalarField.h"
+#include "parcel.h"
 
 
 
@@ -31,7 +32,7 @@ public:
     zVector cSrc;
     zVector cDst;
 
-    void readSamplesAndInterpolate(const std::string& filename)
+    void readSamplesAndInterpolate( std::string& filename)
     {
         samples.clear();
         zMin = 0.0f, zMax = 1.0f;
@@ -90,7 +91,7 @@ public:
         zVector bmin(1e6, 1e6, 0); //  samples[0];
         zVector bmax = bmin * -1;; // samples[0];
 
-        for (const auto& s : samples)
+        for ( auto& s : samples)
         {
             bmin.x = std::min(bmin.x, s.x);
             bmin.y = std::min(bmin.y, s.y);
@@ -124,7 +125,7 @@ public:
         // --- 4) z-range (diagnostic)
         zMin = 1e6;;// samples[0].z;
         zMax = -zMin;// samples[0].z;
-        for (const auto& s : samples)
+        for ( auto& s : samples)
         {
             zMin = std::min(float(zMin), s.z);
             zMax = std::max(float(zMax), s.z);
@@ -138,7 +139,7 @@ public:
 // Assumes members: RES, gridMin, gridMax, field[RES][RES], samples {x,y,z}
 // Improves fit to dotted iso-samples while remaining smooth between contours.
 
-    void reconstructScreenedPoisson
+    void reructScreenedPoisson
     (
         double alpha_base = 0.05,
         double sigma_cells = 1.25,   // Gaussian splat radius in grid cells
@@ -150,16 +151,16 @@ public:
     {
         if (samples.empty()) return;
 
-        const int nx = RES;
-        const int ny = RES;
+         int nx = RES;
+         int ny = RES;
         zVector gridMin(-50, -50, 0);
         zVector gridMax(50, 50, 0);
 
-        const double dx = (gridMax.x - gridMin.x) / (nx - 1);
-        const double dy = (gridMax.y - gridMin.y) / (ny - 1);
+         double dx = (gridMax.x - gridMin.x) / (nx - 1);
+         double dy = (gridMax.y - gridMin.y) / (ny - 1);
 
-        const double invDx = (nx > 1) ? 1.0 / (gridMax.x - gridMin.x) * (nx - 1) : 0.0;
-        const double invDy = (ny > 1) ? 1.0 / (gridMax.y - gridMin.y) * (ny - 1) : 0.0;
+         double invDx = (nx > 1) ? 1.0 / (gridMax.x - gridMin.x) * (nx - 1) : 0.0;
+         double invDy = (ny > 1) ? 1.0 / (gridMax.y - gridMin.y) * (ny - 1) : 0.0;
 
         // ----------------------------
         // 1) Gaussian splat of samples -> data (b) and weights (w)
@@ -177,8 +178,8 @@ public:
                 return (v < lo) ? lo : (v > hi ? hi : v);
             };
 
-        const double twoSigma2 = 2.0 * sigma_cells * sigma_cells;
-        const int r = std::max(1, (int)std::ceil(3.0 * sigma_cells)); // 3σ footprint
+         double twoSigma2 = 2.0 * sigma_cells * sigma_cells;
+         int r = std::max(1, (int)std::ceil(3.0 * sigma_cells)); // 3σ footprint
 
         for (auto& s : samples)
         {
@@ -279,8 +280,8 @@ public:
         //     =>
         //     f = [ (fE+fW)/dx^2 + (fN+fS)/dy^2 + α b ] / [ 2/dx^2 + 2/dy^2 + α ]
         // ----------------------------
-        const double invdx2 = 1.0 / (dx * dx);
-        const double invdy2 = 1.0 / (dy * dy);
+         double invdx2 = 1.0 / (dx * dx);
+         double invdy2 = 1.0 / (dy * dy);
 
         auto neighborSample = [&](int i, int j) -> double
             {
@@ -384,7 +385,7 @@ public:
                 float num = 0.0f;
                 float den = 0.0f;
 
-                for (const auto& s : samples)
+                for ( auto& s : samples)
                 {
                     float d = gp.distanceTo(zVector(s.x, s.y, 0));
                     if (d < 1e-3f) d = 1e-3f;
@@ -415,14 +416,14 @@ public:
         int    minNeighbors = 6,
         double eps = 1e-12)
     {
-        const int nx = RES;
-        const int ny = RES;
+         int nx = RES;
+         int ny = RES;
 
         // world grid spacing
         zVector gridMax(50, 50, 0);
         zVector gridMin(-50, -50, 0);
-        const double dx = (gridMax.x - gridMin.x) / (nx - 1);
-        const double dy = (gridMax.y - gridMin.y) / (ny - 1);
+         double dx = (gridMax.x - gridMin.x) / (nx - 1);
+         double dy = (gridMax.y - gridMin.y) / (ny - 1);
 
         // helper lambdas
         auto wendlandC2 = [](double q) -> double
@@ -497,9 +498,9 @@ public:
         {
             for (int i = 0; i < nx; ++i)
             {
-                const zVector gp = gridPoints[i][j];
-                const double xg = gp.x;
-                const double yg = gp.y;
+                 zVector gp = gridPoints[i][j];
+                 double xg = gp.x;
+                 double yg = gp.y;
 
                 // build weighted normal equations
                 double S_w = 0.0;
@@ -511,23 +512,23 @@ public:
 
                 // choose support radius in *world* so kernel is isotropic when dx != dy
                 // convert cells -> world by averaging
-                const double R = supportRadiusCells * 0.5 * (dx + dy);
-                const double invR = (R > eps) ? 1.0 / R : 1.0;
+                 double R = supportRadiusCells * 0.5 * (dx + dy);
+                 double invR = (R > eps) ? 1.0 / R : 1.0;
 
                 double idw_num = 0.0;
                 double idw_den = 0.0;
 
-                for (const auto& s : samples)
+                for ( auto& s : samples)
                 {
-                    const double sx = s.x;
-                    const double sy = s.y;
-                    const double sz = s.z;
+                     double sx = s.x;
+                     double sy = s.y;
+                     double sz = s.z;
 
-                    const double rx = sx - xg;
-                    const double ry = sy - yg;
+                     double rx = sx - xg;
+                     double ry = sy - yg;
 
-                    const double r = std::sqrt(rx * rx + ry * ry);
-                    const double q = r * invR;
+                     double r = std::sqrt(rx * rx + ry * ry);
+                     double q = r * invR;
 
                     // IDW (fallback) accumulators
                     double d = r;
@@ -633,13 +634,120 @@ public:
     }
 
 
+    ///
+
+    void computeShortestPath_AStar(
+         zVector& start,
+         zVector& goal,
+        std::vector<zVector>& outPath,
+         std::vector<parcel>& plots
+    )
+    {
+        struct Node
+        {
+            int x, y;
+            float gCost, hCost;
+            Node* parent;
+            Node(int _x, int _y, float g, float h, Node* p = nullptr)
+                : x(_x), y(_y), gCost(g), hCost(h), parent(p) {}
+        };
+
+        struct CompareNode
+        {
+            bool operator()(Node* a, Node* b)
+            {
+                return (a->gCost + a->hCost) > (b->gCost + b->hCost);
+            }
+        };
+
+        auto heuristic = [](int x1, int y1, int x2, int y2)
+            {
+                return sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+            };
+
+        auto pointInsideAnyPolygon = [&]( zVector& p)
+            {
+                for ( auto& plot : plots)
+                {
+                    if (pointInsidePolygon(plot.parcelPoints, 50, _cast<zVector&>(p), 0))
+                        return true;
+                }
+                return false;
+            };
+
+        outPath.clear();
+        int sx = std::clamp((int)std::round(start.x), 0, RES - 1);
+        int sy = std::clamp((int)std::round(start.y), 0, RES - 1);
+        int gx = std::clamp((int)std::round(goal.x), 0, RES - 1);
+        int gy = std::clamp((int)std::round(goal.y), 0, RES - 1);
+
+        std::priority_queue<Node*, std::vector<Node*>, CompareNode> openSet;
+        std::unordered_map<int, Node*> visited;
+
+        Node* startNode = new Node(sx, sy, 0.0f, heuristic(sx, sy, gx, gy));
+        openSet.push(startNode);
+
+        int dirs[8][2] = {
+            {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+            {1, 1}, {-1, -1}, {1, -1}, {-1, 1}
+        };
+
+        while (!openSet.empty())
+        {
+            Node* current = openSet.top();
+            openSet.pop();
+
+            if (current->x == gx && current->y == gy)
+            {
+                // reruct path
+                for (Node* n = current; n != nullptr; n = n->parent)
+                    outPath.push_back(zVector(n->x, n->y, 0));
+
+                std::reverse(outPath.begin(), outPath.end());
+                break;
+            }
+
+            int key = current->x * RES + current->y;
+            if (visited.count(key)) continue;
+            visited[key] = current;
+
+            for (auto& d : dirs)
+            {
+                int nx = current->x + d[0];
+                int ny = current->y + d[1];
+                if (nx < 0 || ny < 0 || nx >= RES || ny >= RES) continue;
+
+                float fieldCost = field[nx][ny];
+                if (std::isnan(fieldCost)) fieldCost = 1.0f;
+
+                float polyPenalty = pointInsideAnyPolygon(zVector(nx, ny, 0)) ? 50.0f : 0.0f;
+                float stepCost = 1.0f + std::fabs(fieldCost) + polyPenalty;
+
+                Node* neighbor = new Node(
+                    nx, ny,
+                    current->gCost + stepCost,
+                    heuristic(nx, ny, gx, gy),
+                    current
+                );
+
+                openSet.push(neighbor);
+            }
+        }
+
+        // cleanup visited nodes
+        for (auto& kv : visited)
+            delete kv.second;
+    }
+
+
+
     void drawSamplePoints()
     {
         if (samples.empty()) return;
 
         glPointSize(1);
         glBegin(GL_POINTS);
-        for (const auto& ptRaw : samples)
+        for ( auto& ptRaw : samples)
         {
             zVector pt = ptRaw;
             //pt.z = ofMap(ptRaw.z, zMin, zMax, -1.0f, 1.0f) * zScale; // normalized and scaled

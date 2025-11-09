@@ -35,12 +35,12 @@ Alice::vec zVecToAliceVec(zVector& in)
     return Alice::vec(in.x, in.y, in.z);
 }
 
-constexpr int RES = 32;
-constexpr int latentDim = 8;
-constexpr int inputDim = RES * RES;
+expr int RES = 32;
+expr int latentDim = 8;
+expr int inputDim = RES * RES;
 
 std::vector<vec_t> sdfStack;
-vec_t reconstructedSDF;
+vec_t reructedSDF;
 int curSample = 0;
 
 network<sequential> autoencoder;
@@ -101,9 +101,9 @@ public:
 
     FeedForwardNN() {}
 
-    void addLayer(const std::vector<std::vector<float>>& W,
-        const std::vector<float>& b,
-        const std::string& activation)
+    void addLayer( std::vector<std::vector<float>>& W,
+         std::vector<float>& b,
+         std::string& activation)
     {
         Layer layer;
         layer.weights = W;
@@ -112,11 +112,11 @@ public:
         layers.push_back(layer);
     }
 
-    vec_t forward(const vec_t& input) const
+    vec_t forward( vec_t& input) 
     {
         vec_t x = input;
 
-        for (const Layer& layer : layers)
+        for ( Layer& layer : layers)
         {
             vec_t y(layer.biases.size());
 
@@ -307,7 +307,7 @@ void buildNetwork()
 
 void decodeCurrent()
 {
-    reconstructedSDF = autoencoder.predict(sdfStack[curSample]);
+    reructedSDF = autoencoder.predict(sdfStack[curSample]);
 }
 
 network<sequential> buildEncoderFromAutoencoder(network<sequential>& autoencoder)
@@ -416,7 +416,7 @@ network<sequential> buildDecoderFromAutoencoder(network<sequential>& autoencoder
     return decoder;
 }
 
-void printNetworkSummary(network<sequential>& autoencoder, const FeedForwardNN& encoderNN, const FeedForwardNN& decoderNN)
+void printNetworkSummary(network<sequential>& autoencoder,  FeedForwardNN& encoderNN,  FeedForwardNN& decoderNN)
 {
     std::cout << "\n========== NETWORK STRUCTURE SUMMARY ==========\n";
 
@@ -432,7 +432,7 @@ void printNetworkSummary(network<sequential>& autoencoder, const FeedForwardNN& 
     std::cout << "\n--- FeedForwardNN Encoder ---\n";
     for (size_t i = 0; i < encoderNN.layers.size(); ++i)
     {
-        const auto& layer = encoderNN.layers[i];
+         auto& layer = encoderNN.layers[i];
         std::cout << "  [Layer " << i << "] in: " << layer.weights[0].size()
             << " | out: " << layer.weights.size()
             << " | activation: " << layer.activation << "\n";
@@ -441,7 +441,7 @@ void printNetworkSummary(network<sequential>& autoencoder, const FeedForwardNN& 
     std::cout << "\n--- FeedForwardNN Decoder ---\n";
     for (size_t i = 0; i < decoderNN.layers.size(); ++i)
     {
-        const auto& layer = decoderNN.layers[i];
+         auto& layer = decoderNN.layers[i];
         std::cout << "  [Layer " << i << "] in: " << layer.weights[0].size()
             << " | out: " << layer.weights.size()
             << " | activation: " << layer.activation << "\n";
@@ -451,7 +451,7 @@ void printNetworkSummary(network<sequential>& autoencoder, const FeedForwardNN& 
 }
 
 
-void drawSDFGrid(const vec_t& sdf, zVector offset)
+void drawSDFGrid( vec_t& sdf, zVector offset)
 {
 
     for (int y = 0; y < RES; ++y)
@@ -521,7 +521,7 @@ void draw()
     drawGrid(50);
 
     drawSDFGrid(sdfStack[curSample], zVector(0, 0, 0));            // Input SDF
-    drawSDFGrid(reconstructedSDF, zVector(RES + 4, 0, 0));         // Reconstruction
+    drawSDFGrid(reructedSDF, zVector(RES + 4, 0, 0));         // Reruction
 }
 
 vec_t latentVec(latentDim, 0.0f); // starts at origin
@@ -622,7 +622,7 @@ void keyPress(unsigned char k, int xm, int ym)
     if (k == 'l') // walk through latent dimensions
     {
         latentVec[latentStepIndex] += latentStepSize;
-        reconstructedSDF = autoencoder.predict(latentVec);
+        reructedSDF = autoencoder.predict(latentVec);
 
         std::cout << "Latent dim " << latentStepIndex << " += " << latentStepSize << "\n";
         latentStepIndex = (latentStepIndex + 1) % latentDim;  // move to next dim next time

@@ -126,7 +126,7 @@ int insidePolygon(zVector* polygon, int N, zVector& p, int bound)
 			if (p.y == p2.y && p.x <= p2.x)
 			{
 				//next vertex
-				const zVector& p3 = polygon[(i + 1) % N];
+				 zVector& p3 = polygon[(i + 1) % N];
 
 				//p.y lies between p1.y & p3.y
 				if (p.y >= MIN(p1.y, p3.y) && p.y <= MAX(p1.y, p3.y))

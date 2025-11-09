@@ -205,7 +205,7 @@ void drawSphere(vec &a, vec rotate, vec scale = vec(1, 1, 1), float r = 1.0, flo
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	static const GLdouble equation[] = { 0, 0, 1.0, 0.0 };
+	static  GLdouble equation[] = { 0, 0, 1.0, 0.0 };
 	glClipPlane(GL_CLIP_PLANE0, equation);
 	//	glEnable(GL_CLIP_PLANE0);
 
@@ -481,7 +481,7 @@ int orientation(vec p, vec q, vec r)
 
 // A function used by library function qsort() to sort an array of
 // points with respect to the first point
-int compare(const void *vp1, const void *vp2)
+int compare( void *vp1,  void *vp2)
 {
 	vec *p1 = (vec *)vp1;
 	vec *p2 = (vec *)vp2;
@@ -495,84 +495,84 @@ int compare(const void *vp1, const void *vp2)
 }
 
 // Prints convex hull of a set of n points.
-void convexHull(vec points[], int n, stack<vec> &S)
-{
-
-	// Find the bottommost point
-	int ymin = points[0].y, min = 0;
-	for (int i = 1; i < n; i++)
-	{
-		int y = points[i].y;
-
-		// Pick the bottom-most or chose the left
-		// most point in case of tie
-		if ((y < ymin) || (ymin == y &&
-			points[i].x < points[min].x))
-			ymin = points[i].y, min = i;
-	}
-
-	// Place the bottom-most point at first position
-	swap(points[0], points[min]);
-
-	// Sort n-1 points with respect to the first point.
-	// A point p1 comes before p2 in sorted output if p2
-	// has larger polar angle (in counterclockwise
-	// direction) than p1
-	p0 = points[0];
-	qsort(&points[1], n - 1, sizeof(vec), compare);
-
-	// If two or more points make same angle with p0,
-	// Remove all but the one that is farthest from p0
-	// Remember that, in above sorting, our criteria was
-	// to keep the farthest point at the end when more than
-	// one points have same angle.
-	int m = 1; // Initialize size of modified array
-	for (int i = 1; i < n; i++)
-	{
-		// Keep removing i while angle of i and i+1 is same
-		// with respect to p0
-		while (i < n - 1 && orientation(p0, points[i], points[i + 1]) == 0)i++;
-
-
-		points[m] = points[i];
-		m++;  // Update size of modified array
-	}
-
-	//	cout << " CHULL " << m << " " << n << endl;
-		// If modified array of points has less than 3 points,
-		// convex hull is not possible
-	if (m < 3) return;
-
-	// Create an empty stack and push first three points
-	// to it.
-	//stack<vec> S;
-	S.push(points[0]);
-	S.push(points[1]);
-	S.push(points[2]);
-
-
-
-	// Process remaining n-3 points
-	for (int i = 3; i < m; i++)
-	{
-		// Keep removing top while the angle formed by
-		// points next-to-top, top, and points[i] makes
-		// a non-left turn
-		vec prev;
-		while (orientation(S.size() > 1 ? nextToTop(S) : vec(0, 0, 0), S.size() > 0 ? S.top() : vec(0, 0, 0), points[i]) != 2)
-			S.pop();
-
-		S.push(points[i]);
-	}
-
-	// Now stack has the output points, print contents of stack
-	//while (!S.empty())
-	//{
-	//	vec p = S.top();
-	//	cout << "(" << p.x << ", " << p.y << ")" << endl;
-	//	S.pop();
-	//}
-}
+//void convexHull(vec points[], int n, stack<vec> &S)
+//{
+//
+//	// Find the bottommost point
+//	int ymin = points[0].y, min = 0;
+//	for (int i = 1; i < n; i++)
+//	{
+//		int y = points[i].y;
+//
+//		// Pick the bottom-most or chose the left
+//		// most point in case of tie
+//		if ((y < ymin) || (ymin == y &&
+//			points[i].x < points[min].x))
+//			ymin = points[i].y, min = i;
+//	}
+//
+//	// Place the bottom-most point at first position
+//	swap(points[0], points[min]);
+//
+//	// Sort n-1 points with respect to the first point.
+//	// A point p1 comes before p2 in sorted output if p2
+//	// has larger polar angle (in counterclockwise
+//	// direction) than p1
+//	p0 = points[0];
+//	qsort(&points[1], n - 1, sizeof(vec), compare);
+//
+//	// If two or more points make same angle with p0,
+//	// Remove all but the one that is farthest from p0
+//	// Remember that, in above sorting, our criteria was
+//	// to keep the farthest point at the end when more than
+//	// one points have same angle.
+//	int m = 1; // Initialize size of modified array
+//	for (int i = 1; i < n; i++)
+//	{
+//		// Keep removing i while angle of i and i+1 is same
+//		// with respect to p0
+//		while (i < n - 1 && orientation(p0, points[i], points[i + 1]) == 0)i++;
+//
+//
+//		points[m] = points[i];
+//		m++;  // Update size of modified array
+//	}
+//
+//	//	cout << " CHULL " << m << " " << n << endl;
+//		// If modified array of points has less than 3 points,
+//		// convex hull is not possible
+//	if (m < 3) return;
+//
+//	// Create an empty stack and push first three points
+//	// to it.
+//	//stack<vec> S;
+//	S.push(points[0]);
+//	S.push(points[1]);
+//	S.push(points[2]);
+//
+//
+//
+//	// Process remaining n-3 points
+//	for (int i = 3; i < m; i++)
+//	{
+//		// Keep removing top while the angle formed by
+//		// points next-to-top, top, and points[i] makes
+//		// a non-left turn
+//		vec prev;
+//		while (orientation(S.size() > 1 ? nextToTop(S) : vec(0, 0, 0), S.size() > 0 ? S.top() : vec(0, 0, 0), points[i]) != 2)
+//			S.pop();
+//
+//		S.push(points[i]);
+//	}
+//
+//	// Now stack has the output points, print contents of stack
+//	//while (!S.empty())
+//	//{
+//	//	vec p = S.top();
+//	//	cout << "(" << p.x << ", " << p.y << ")" << endl;
+//	//	S.pop();
+//	//}
+//}
 
 void drawConvexHull(stack<vec> &S, vec4 clr = vec4(1, 1, 1, 1))
 {
@@ -1013,7 +1013,7 @@ long endTimer()
 
 //////////////////////////////////////////////////////////////////////////
 
-vector<string> splitString(const string& str, const string& delimiter)
+vector<string> splitString( string& str,  string& delimiter)
 {
 	vector<string> elements;
 	// Skip delimiters at beginning.
@@ -1202,7 +1202,7 @@ void QP_SOLVE_dense(real_2d_array &A, real_1d_array &b, real_1d_array &x)
 	// Exact solution is [x0,x1] = [3,2]
 	//
 	// We provide algorithm with starting point, although in this case
-	// (dense matrix, no constraints) it can work without such information.
+	// (dense matrix, no raints) it can work without such information.
 	//
 	// IMPORTANT: this solver minimizes  following  function:
 	//     f(x) = 0.5*x'*A*x + b'*x.

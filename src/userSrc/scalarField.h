@@ -16,7 +16,7 @@
 using namespace zSpace;
 
 //these two functiosn must be turned on for sketch_circleSDF_fitter.cpp
-inline zVector zMax(const zVector& a, const zVector& b)
+inline zVector zMax( zVector& a,  zVector& b)
 {
     return zVector(std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z));
 }
@@ -27,7 +27,7 @@ inline float smin(float a, float b, float k)
     return std::min(a, b) - h * h * k * 0.25f;
 }
 
-inline zVector zMin(const zVector& a, const zVector& b)
+inline zVector zMin( zVector& a,  zVector& b)
 {
     return zVector(std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z));
 }
@@ -76,7 +76,7 @@ public:
 
   
 
-    static const int RES = 150;
+    static  int RES = 150;
     int div = 2; 
 
     zVector gridPoints[RES][RES];
@@ -129,7 +129,7 @@ public:
         return std::min(a, b) - h * h * k * 0.25f;
     }
 
-    void addVoronoi(const std::vector<zVector>& sites )
+    void addVoronoi( std::vector<zVector>& sites )
     {
         for (int i = 0; i < RES; i++)
         {
@@ -139,7 +139,7 @@ public:
                 float minDist = 1e6f;
                 float secondMinDist = 1e6f;
 
-                for (const auto& site : sites)
+                for ( auto& site : sites)
                 {
                     float d = pt.distanceTo(zVector(site));
 
@@ -241,7 +241,7 @@ public:
     }
     //----------------------------------------
     
-    void unionWith(const ScalarField2D& other)
+    void unionWith( ScalarField2D& other)
     {
         for (int i = 0; i < RES; i++)
         {
@@ -252,7 +252,7 @@ public:
         }
     }
 
-    void intersectWith(const ScalarField2D& other)
+    void intersectWith( ScalarField2D& other)
     {
         for (int i = 0; i < RES; i++)
         {
@@ -263,7 +263,7 @@ public:
         }
     }
 
-    void subtract(const ScalarField2D& other)
+    void subtract( ScalarField2D& other)
     {
         for (int i = 0; i < RES; i++)
         {
@@ -274,7 +274,7 @@ public:
         }
     }
 
-    void blendWith(const ScalarField2D& other, float smooth_k, SMinMode mode = SMinMode::EXPONENTIAL)
+    void blendWith( ScalarField2D& other, float smooth_k, SMinMode mode = SMinMode::EXPONENTIAL)
     {
         auto smin_exponential = [](float a, float b, float k)
             {
@@ -475,9 +475,9 @@ public:
     //void rescaleFieldToRange(float targetMin = -1.0f, float targetMax = 1.0f)
     //{
     //    // --- Tunables to make behaviour stable across RES ---
-    //    const float zeroEps = 1e-6f;                 // dead-band around zero to ignore tiny noise
-    //    const int   N = std::max(1, RES * RES);
-    //    const int   minCountForBin = std::max(1, N / 100); // at least ~1% of samples to call a bin "present"
+    //     float zeroEps = 1e-6f;                 // dead-band around zero to ignore tiny noise
+    //     int   N = std::max(1, RES * RES);
+    //     int   minCountForBin = std::max(1, N / 100); // at least ~1% of samples to call a bin "present"
 
     //    // --- Pass 1: scan stats & robust sign counts (ignore |v| < zeroEps) ---
     //    float minPos = 1e6f, maxPos = -1e6f;
@@ -515,8 +515,8 @@ public:
     //        }
     //    }
 
-    //    const bool hasPos = (cntPos >= minCountForBin);
-    //    const bool hasNeg = (cntNeg >= minCountForBin);
+    //     bool hasPos = (cntPos >= minCountForBin);
+    //     bool hasNeg = (cntNeg >= minCountForBin);
 
     //    // --- Case A: Mixed signs (robustly) -> split mapping, pin 0 to 0 ---
     //    if (hasPos && hasNeg)
@@ -572,7 +572,7 @@ public:
     //    }
 
     //    // --- Case B: Single-sign (or effectively single-sign) -> mean-center then map centred extrema to [-1,+1]
-    //    const float mean = static_cast<float>(sum / N);
+    //     float mean = static_cast<float>(sum / N);
 
     //    float cmin = 1e6f, cmax = -1e6f;
     //    for (int i = 0; i < RES; ++i)
@@ -585,7 +585,7 @@ public:
     //        }
     //    }
 
-    //    float denom = std::max(cmax - cmin, 1e-12f); // guard constant field
+    //    float denom = std::max(cmax - cmin, 1e-12f); // guard ant field
 
     //    for (int i = 0; i < RES; ++i)
     //    {
@@ -664,12 +664,12 @@ public:
 
         auto gradAt = [&](int i, int j, float& gx, float& gy)
             {
-                const int iN = clampi(i - 1, 0, RES - 1);
-                const int iS = clampi(i + 1, 0, RES - 1);
-                const int jW = clampi(j - 1, 0, RES - 1);
-                const int jE = clampi(j + 1, 0, RES - 1);
+                 int iN = clampi(i - 1, 0, RES - 1);
+                 int iS = clampi(i + 1, 0, RES - 1);
+                 int jW = clampi(j - 1, 0, RES - 1);
+                 int jE = clampi(j + 1, 0, RES - 1);
 
-                const float uC = field[i][j];
+                 float uC = field[i][j];
                 float uN = field[iN][j];
                 float uS = field[iS][j];
                 float uW = field[i][jW];
@@ -697,7 +697,7 @@ public:
             {
                 for (int j = 0; j < RES; ++j)
                 {
-                    const float uC = field[i][j];
+                     float uC = field[i][j];
 
                     if (ignoreOUT && std::fabs(uC - OUT) < 1e-6f)
                     {
@@ -705,10 +705,10 @@ public:
                         continue;
                     }
 
-                    const int iN = clampi(i - 1, 0, RES - 1);
-                    const int iS = clampi(i + 1, 0, RES - 1);
-                    const int jW = clampi(j - 1, 0, RES - 1);
-                    const int jE = clampi(j + 1, 0, RES - 1);
+                     int iN = clampi(i - 1, 0, RES - 1);
+                     int iS = clampi(i + 1, 0, RES - 1);
+                     int jW = clampi(j - 1, 0, RES - 1);
+                     int jE = clampi(j + 1, 0, RES - 1);
 
                     // neighbor samples (OUT-safe)
                     float uN = safeSample(i, j, iN, j, uC);
@@ -744,7 +744,7 @@ public:
                         {
                             bx = -gy; by = gx;
                         }
-                        const float bnorm = std::sqrt(bx * bx + by * by);
+                         float bnorm = std::sqrt(bx * bx + by * by);
                         if (bnorm > 1e-12f)
                         {
                             bx /= bnorm; by /= bnorm;
@@ -815,7 +815,7 @@ public:
             {
                 for (int j = 0; j < RES; ++j)
                 {
-                    const float uC = F(i, j);
+                     float uC = F(i, j);
 
                     if (ignoreOUT && std::fabs(uC - OUT) < 1e-6f)
                     {
@@ -824,10 +824,10 @@ public:
                     }
 
                     // Neumann-ish boundaries (clamped sampling)
-                    const int iN = clampi(i - 1, 0, RES - 1);
-                    const int iS = clampi(i + 1, 0, RES - 1);
-                    const int jW = clampi(j - 1, 0, RES - 1);
-                    const int jE = clampi(j + 1, 0, RES - 1);
+                     int iN = clampi(i - 1, 0, RES - 1);
+                     int iS = clampi(i + 1, 0, RES - 1);
+                     int jW = clampi(j - 1, 0, RES - 1);
+                     int jE = clampi(j + 1, 0, RES - 1);
 
                     float uN = F(iN, j);
                     float uS = F(iS, j);
@@ -906,7 +906,7 @@ public:
          return (1 - ty) * fx0 + ty * fx1;
      }
 
-     zVector gradientAt(const zVector& p)
+     zVector gradientAt( zVector& p)
      {
          float eps = 1.0f;
          float dx = sampleAt(p.x + eps, p.y) - sampleAt(p.x - eps, p.y);
@@ -1263,7 +1263,7 @@ public:
 
     }
 
-    void exportOrderedContoursAsCSV(const std::string& filename, float tolerance = 1e-4f)
+    void exportOrderedContoursAsCSV( std::string& filename, float tolerance = 1e-4f)
     {
         std::ofstream out(filename);
         if (!out.is_open())
@@ -1277,7 +1277,7 @@ public:
         for (size_t i = 0; i < contours.size(); ++i)
         {
             out << "Contour_" << i << "\n";
-            for (const auto& pt : contours[i])
+            for ( auto& pt : contours[i])
             {
                 out << std::fixed << std::setprecision(6)
                     << pt.x << "," << pt.y << "," << pt.z << "\n";

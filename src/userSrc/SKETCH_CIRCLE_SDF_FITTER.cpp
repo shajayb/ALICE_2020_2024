@@ -66,7 +66,7 @@ double threshold;
 //-------------------------------
 // Utility
 //-------------------------------
-void loadPolygonFromCSV(const std::string& filename)
+void loadPolygonFromCSV( std::string& filename)
 {
     polygon.clear();
     std::ifstream file(filename);
@@ -231,7 +231,7 @@ float computeTotalError()
 
 void optimiseCircleCenters(int iterations = 20, float step = 0.001f)
 {
-    const float eps = 1e-3f;
+     float eps = 1e-3f;
 
     //for (int it = 0; it < iterations; it++)
     {
@@ -311,12 +311,12 @@ void optimiseCircleCenters(int iterations = 20, float step = 0.001f)
 // struct zVector {
 //     float x, y, z;
 //     zVector(float x_ = 0, float y_ = 0, float z_ = 0) : x(x_), y(y_), z(z_) {}
-//     float distanceTo(const zVector& other) const {
+//     float distanceTo( zVector& other)  {
 //         return std::sqrt(std::pow(x - other.x, 2) + std::pow(y - other.y, 2) + std::pow(z - other.z, 2));
 //     }
-//     zVector operator+(const zVector& other) const { return zVector(x + other.x, y + other.y, z + other.z); }
-//     zVector operator-(const zVector& other) const { return zVector(x - other.x, y - other.y, z - other.z); }
-//     zVector operator*(float s) const { return zVector(x * s, y * s, z * s); }
+//     zVector operator+( zVector& other)  { return zVector(x + other.x, y + other.y, z + other.z); }
+//     zVector operator-( zVector& other)  { return zVector(x - other.x, y - other.y, z - other.z); }
+//     zVector operator*(float s)  { return zVector(x * s, y * s, z * s); }
 // };
 // std::vector<zVector> fittedCenters;
 // std::vector<float> fittedRadii;
@@ -351,9 +351,9 @@ public:
 
     float prevLoss = 0; // Not directly used in core MLP logic but kept as per original
 
-    MLP() {} // Default constructor
+    MLP() {} // Default ructor
 
-    MLP(int inDim, const std::vector<int>& hDims, int outDim)
+    MLP(int inDim,  std::vector<int>& hDims, int outDim)
         : inputDim(inDim), outputDim(outDim), hiddenLayerDims(hDims), numHiddenLayers(hDims.size())
     {
         // Resize activations vector to hold input, hidden layers, and output layer
@@ -433,7 +433,7 @@ public:
         }
     }
 
-    std::vector<float> forward(const std::vector<float>& x)
+    std::vector<float> forward( std::vector<float>& x)
     {
         // Store input in the first activation layer
         activations[0] = x;
@@ -441,10 +441,10 @@ public:
         // Propagate through hidden layers
         for (int l = 0; l < numHiddenLayers; ++l)
         {
-            const std::vector<float>& prev_layer_activations = activations[l];
+             std::vector<float>& prev_layer_activations = activations[l];
             std::vector<float>& current_layer_activations = activations[l + 1];
-            const std::vector<std::vector<float>>& weights = W[l];
-            const std::vector<float>& biases = b[l];
+             std::vector<std::vector<float>>& weights = W[l];
+             std::vector<float>& biases = b[l];
             int current_layer_dim = (l == numHiddenLayers - 1) ? outputDim : hiddenLayerDims[l]; // Last hidden layer to output
 
             for (int i = 0; i < current_layer_dim; ++i)
@@ -460,10 +460,10 @@ public:
 
         // Output layer (no activation, or specific activation if needed for task)
         // If numHiddenLayers is 0, this calculates output directly from input
-        const std::vector<float>& prev_layer_activations = activations[numHiddenLayers];
+         std::vector<float>& prev_layer_activations = activations[numHiddenLayers];
         std::vector<float>& output_layer_activations = activations[numHiddenLayers + 1];
-        const std::vector<std::vector<float>>& weights = W[numHiddenLayers]; // W[numHiddenLayers] connects last hidden to output
-        const std::vector<float>& biases = b[numHiddenLayers];
+         std::vector<std::vector<float>>& weights = W[numHiddenLayers]; // W[numHiddenLayers] connects last hidden to output
+         std::vector<float>& biases = b[numHiddenLayers];
 
         for (int i = 0; i < outputDim; ++i)
         {
@@ -479,7 +479,7 @@ public:
     }
 
     // see : https://g.co/gemini/share/4882f6e2724c for the explanation of the correction
-    float computeLossAndGradient(const std::vector<float>& x, std::vector<zVector>& polygon, std::vector<float>& gradOut)
+    float computeLossAndGradient( std::vector<float>& x, std::vector<zVector>& polygon, std::vector<float>& gradOut)
     {
         // Ensure gradOut is correctly sized
         gradOut.assign(outputDim, 0.0f);
@@ -591,7 +591,7 @@ public:
     }
 
     // see : https://g.co/gemini/share/4882f6e2724c for the explanation of the correction
-    void backward(const std::vector<float>& gradOut, float lr)
+    void backward( std::vector<float>& gradOut, float lr)
     {
         // raw_grad_outputs corresponds to dLoss/d_raw_output_values
         std::vector<float> current_grad_output = gradOut; // This will be propagated backward
@@ -602,7 +602,7 @@ public:
         int prev_layer_idx = numHiddenLayers;    // Index for activations of the layer before the output (hidden_N)
 
         std::vector<float>& output_layer_activations_raw = activations[numHiddenLayers + 1]; // Raw outputs
-        const std::vector<float>& prev_layer_activations = activations[prev_layer_idx]; // Activations from last hidden layer (or input if no hidden layers)
+         std::vector<float>& prev_layer_activations = activations[prev_layer_idx]; // Activations from last hidden layer (or input if no hidden layers)
 
         std::vector<float> grad_prev_layer_raw(prev_layer_activations.size(), 0.0f); // Accumulate gradients for previous layer's raw sums
 
@@ -634,7 +634,7 @@ public:
         {
             // Apply activation function derivative for the layer we just backpropagated *from*
             // The activations for this layer are at activations[l+1] (unless it's the input layer)
-            const std::vector<float>& current_layer_activations = activations[l + 1]; // These are the activated outputs of the current layer
+             std::vector<float>& current_layer_activations = activations[l + 1]; // These are the activated outputs of the current layer
 
             // dLoss/d_activated_current_layer_i = dLoss/d_raw_current_layer_i * d(tanh(raw_current_layer_i))/d_raw_current_layer_i
             std::vector<float> grad_current_layer_activated(current_layer_activations.size());
@@ -648,7 +648,7 @@ public:
             current_layer_idx = l;
             prev_layer_idx = l; // Activations of the layer *before* this one (activations[l])
 
-            const std::vector<float>& prev_layer_activations_for_weights = activations[prev_layer_idx];
+             std::vector<float>& prev_layer_activations_for_weights = activations[prev_layer_idx];
 
             // If this is the first hidden layer (l=0), prev_layer_activations_for_weights is the input
             // If it's a subsequent hidden layer, it's the previous hidden layer's activations

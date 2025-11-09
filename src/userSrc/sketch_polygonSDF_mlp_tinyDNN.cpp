@@ -43,7 +43,7 @@ inline zVector zMin(zVector& a, zVector& b)
 
 #include "scalarField.h" ;
 
-vector<zVector> loadPolygonFromCSV( const std::string& filename)
+vector<zVector> loadPolygonFromCSV(  std::string& filename)
 {
     vector<zVector> poly;
     poly.clear();

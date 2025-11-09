@@ -84,7 +84,7 @@ public:
     std::vector<zVector> lastShortestPath;
     std::vector< std::pair<zVector, zVector >> isolines;
 
-    void updateLVMap(const std::vector<ProgramCenter>& ECenters)
+    void updateLVMap( std::vector<ProgramCenter>& ECenters)
     {
         for (int i = -(RES * 0.5), icnt = 0; i < (RES * 0.5); i++ , icnt++)
         {
@@ -95,7 +95,7 @@ public:
 
                 float weightedSum = 0.0f;
                 float totalWeight = 0.0f;
-                for (const auto& EC : ECenters)
+                for ( auto& EC : ECenters)
                 {
                     zVector cen = EC.cen;
                     float distance = pt.distanceTo(cen);
@@ -410,7 +410,7 @@ public:
         int offset = RES / 2;  // Shift negative coordinates
 
         // Step 1: Iterate through each Employment Center as a seed
-        for (const auto& center : listofProgramCenters)
+        for ( auto& center : listofProgramCenters)
         {
             zVector seed = center.cen;
 
@@ -499,7 +499,7 @@ public:
         processAllTriangles(thresholdValue, isolines);
 
         glColor3f(1, 1, 0);
-        for (const auto& segment : isolines)
+        for ( auto& segment : isolines)
         {
             zVector str, end;
             str = segment.first;

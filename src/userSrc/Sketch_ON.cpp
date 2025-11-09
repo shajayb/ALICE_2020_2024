@@ -26,15 +26,15 @@ Alice::vec zVecToAliceVec(zVector& in)
     return Alice::vec(in.x, in.y, in.z);
 }
 
-bool pointInsidePolygon(const zVector& pt, const std::vector<zVector>& poly)
+bool pointInsidePolygon( zVector& pt,  std::vector<zVector>& poly)
 {
     int crossings = 0;
     int N = poly.size();
 
     for (int i = 0; i < N; ++i)
     {
-        const zVector& a = poly[i];
-        const zVector& b = poly[(i + 1) % N];
+         zVector& a = poly[i];
+         zVector& b = poly[(i + 1) % N];
 
         // Only consider edges crossing the horizontal line
         if (((a.y > pt.y) != (b.y > pt.y)))
@@ -50,7 +50,7 @@ bool pointInsidePolygon(const zVector& pt, const std::vector<zVector>& poly)
     return (crossings % 2 == 1); // inside if odd
 }
 
-bool loadPolygonFromFile(const std::string& filePath, std::vector<zVector>& polygon)
+bool loadPolygonFromFile( std::string& filePath, std::vector<zVector>& polygon)
 {
     polygon.clear();
     std::ifstream file(filePath);
@@ -130,7 +130,7 @@ void setup()
     model.AddModelGeometryComponent(plc, &attr);
 
     // --- Easiest: write via filename overload (avoids archive signature issues)
-    const wchar_t* outfile = L"data/simplest_polyline.3dm";
+     wchar_t* outfile = L"data/simplest_polyline.3dm";
     bool ok = model.Write(outfile);             // writes using default/latest version
     // If you want a specific version (e.g., Rhino 6 = 60, 7 = 70) and your SDK supports it:
     // bool ok = model.Write(outfile, 60);

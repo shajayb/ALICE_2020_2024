@@ -102,7 +102,7 @@ namespace ScalarFieldIO
 #pragma pack(pop)
 
     template <int RES>
-    void loadBMPToScalarFieldRGB(const string& filename, float field[RES][RES])
+    void loadBMPToScalarFieldRGB( string& filename, float field[RES][RES])
     {
         ifstream file(filename, ios::binary);
         assert(file.is_open());
@@ -150,8 +150,8 @@ namespace ScalarFieldIO
 
     template <int RES>
     void saveScalarFieldToBMP_RGB(
-        const string& templateBMP,
-        const string& outputBMP,
+         string& templateBMP,
+         string& outputBMP,
         float field[RES][RES])
     {
         // Read header from template BMP
@@ -178,8 +178,8 @@ namespace ScalarFieldIO
         assert(out.is_open());
 
         // Write headers exactly as template
-        out.write(reinterpret_cast<const char*>(&fileHeader), sizeof(fileHeader));
-        out.write(reinterpret_cast<const char*>(&infoHeader), sizeof(infoHeader));
+        out.write(reinterpret_cast< char*>(&fileHeader), sizeof(fileHeader));
+        out.write(reinterpret_cast< char*>(&infoHeader), sizeof(infoHeader));
 
         // If template has a palette: none for 24-bit so we skip
 
@@ -248,7 +248,7 @@ void keyPress(unsigned char k, int xm, int ym)
 
     if (k == 'i')
     {
-        constexpr int RES = 128;
+        expr int RES = 128;
 
         char s[200];
         sprintf(s, "data/out%i.bmp", n);
@@ -286,7 +286,7 @@ void keyPress(unsigned char k, int xm, int ym)
         OT_field.normalise();
        
 
-        constexpr int RES = 128;
+        expr int RES = 128;
         saveScalarFieldToBMP_RGB<RES>(
             "scalarField1_gray.bmp",      // template BMP for header
             "data/scalarField1_gray.bmp",  // output filename
@@ -319,7 +319,7 @@ void keyPress(unsigned char k, int xm, int ym)
         OT_field.clampNeg();
         OT_field.normalise();
 
-        constexpr int RES = 128;
+        expr int RES = 128;
         saveScalarFieldToBMP_RGB<RES>(
             "scalarField1_gray.bmp",      // template BMP for header
             "data/scalarField2_gray.bmp",  // output filename

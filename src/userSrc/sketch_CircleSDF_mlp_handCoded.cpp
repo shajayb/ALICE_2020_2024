@@ -19,7 +19,7 @@ inline float circleSDF(zVector p, zVector c, float r)
     return (p - c).length() - r;
 }
 
-inline float blendCircleSDFs(zVector pt, const std::vector<zVector>& centers, const std::vector<float>& radii)
+inline float blendCircleSDFs(zVector pt,  std::vector<zVector>& centers,  std::vector<float>& radii)
 {
     float result = 1e6;
     for (int i = 0; i < centers.size(); i++)
@@ -35,7 +35,7 @@ std::vector<float> sdfGT;
 std::vector<zVector> fittedCenters;
 std::vector<float> fittedRadii;
 
-std::vector<zVector> loadPolygonFromCSV(const std::string& filename)
+std::vector<zVector> loadPolygonFromCSV( std::string& filename)
 {
     vector<zVector> poly;
     poly.clear();
@@ -85,7 +85,7 @@ public:
         for (auto& row : W2) for (auto& val : row) val = dist(eng);
     }
 
-    std::vector<float> forward(const std::vector<float>& x)
+    std::vector<float> forward( std::vector<float>& x)
     {
         input = x;
         for (int i = 0; i < hiddenDim; ++i)
@@ -104,7 +104,7 @@ public:
         return output;
     }
 
-    float computeLossAndGradient(const std::vector<float>& x, const std::vector<zVector>& polygon, std::vector<float>& gradOut)
+    float computeLossAndGradient( std::vector<float>& x,  std::vector<zVector>& polygon, std::vector<float>& gradOut)
     {
         std::vector<zVector> centers(outputDim / 3);
         std::vector<float> radii(outputDim / 3);
@@ -155,7 +155,7 @@ public:
         return loss;
     }
 
-    void backward(const std::vector<float>& gradOut, float lr)
+    void backward( std::vector<float>& gradOut, float lr)
     {
         std::vector<float> gradHidden(hiddenDim);
 

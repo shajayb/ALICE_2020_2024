@@ -75,7 +75,7 @@ float polygonSDF(zVector& p, std::vector<zVector>& poly)
     return minDist * (isInsidePolygon(p, poly) ? -1.0f : 1.0f);
 }
 
-void loadPolygonFromCSV(const std::string& filename, vector<zVector>& polygon)
+void loadPolygonFromCSV( std::string& filename, vector<zVector>& polygon)
 {
     polygon.clear();
     std::ifstream file(filename);
@@ -218,7 +218,7 @@ public:
     std::vector<bool> lossOnBools = { true,false,false };
 
 
-    void decodeOutput(const std::vector<float>& out, std::vector<zVector>& centers, std::vector<float>& angles, std::vector<float>& heights)
+    void decodeOutput( std::vector<float>& out, std::vector<zVector>& centers, std::vector<float>& angles, std::vector<float>& heights)
     {
         centers.resize(number_sdf);
         angles.resize(number_sdf);
@@ -366,8 +366,8 @@ public:
         std::vector<float>& heights
     )
     {
-        const int N = trainingSamples.size();
-        const int numLossTypes = 3; // coverage, angular, shadow
+         int N = trainingSamples.size();
+         int numLossTypes = 3; // coverage, angular, shadow
 
         std::vector< std::vector<float> > lossesByType(numLossTypes, std::vector<float>(N, 0.0f));
 
@@ -675,7 +675,7 @@ public:
         restore3d();
     }
     
-    void drawLossBarGraph(const std::vector<float>& losses, float startPtX, float startPtY, float screenWidth = 800, float barHeight = 50)
+    void drawLossBarGraph( std::vector<float>& losses, float startPtX, float startPtY, float screenWidth = 800, float barHeight = 50)
     {
         if (losses.empty()) return;
 
@@ -882,7 +882,7 @@ void initializeMLP()
     int output_dim = NUM_CENTERS * 5;
     std::vector<int> hidden_dims = { 16 };
 
-    mlp = PolygonSDF_MLP(input_dim, hidden_dims, output_dim); // assumes MLP constructor initializes weights/biases
+    mlp = PolygonSDF_MLP(input_dim, hidden_dims, output_dim); // assumes MLP ructor initializes weights/biases
     mlp_input_data.assign(input_dim, 1.0f); // or use 0.0f for strict zero-input
     mlp.number_sdf = NUM_CENTERS;
 
