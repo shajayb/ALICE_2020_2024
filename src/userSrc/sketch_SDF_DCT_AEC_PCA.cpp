@@ -1,4 +1,4 @@
-#define _MAIN_
+﻿#define _MAIN_
 #ifdef _MAIN_
 
 #include "main.h"
@@ -23,8 +23,8 @@ using namespace zSpace;
 
 static  int RES = 128;          // SDF grid resolution
 static  int NUM_POLYGONS = 5;   // number of training shapes
-static  int TOP_K = 2025;       // number of DCT coeffs used
-static  int LATENT_DIM = NUM_POLYGONS -1 ;    // PCA dimensionality ( number of data points - 1)
+static  int TOP_K = 32*32;       // number of DCT coeffs used
+static  int LATENT_DIM = NUM_POLYGONS - 1;    // PCA dimensionality ( number of data points - 1)
 
 //---------------------------------------------------------------------------
 // Helpers
@@ -49,7 +49,7 @@ inline void getJetColor(float value, float& r, float& g, float& b)
 
 
 
-Alice::vec zVecToAliceVec( zVector& in)
+Alice::vec zVecToAliceVec(zVector& in)
 {
     return Alice::vec(in.x, in.y, in.z);
 }
@@ -59,12 +59,12 @@ inline float clampFloat(float v, float vmin, float vmax)
     return (v < vmin) ? vmin : (v > vmax) ? vmax : v;
 }
 
-inline float lengthSq( zVector& v)
+inline float lengthSq(zVector& v)
 {
     return v.x * v.x + v.y * v.y + v.z * v.z;
 }
 
-float distancePointToSegment( zVector& p,  zVector& a,  zVector& b)
+float distancePointToSegment(zVector& p, zVector& a, zVector& b)
 {
     zVector ab = b - a;
     float denom = lengthSq(ab);
@@ -83,15 +83,15 @@ float distancePointToSegment( zVector& p,  zVector& a,  zVector& b)
 }
 
 // point-in-polygon (ray casting, 2D on XY)
-bool pointInPolygon( zVector& p,  std::vector<zVector>& poly)
+bool pointInPolygon(zVector& p, std::vector<zVector>& poly)
 {
     bool inside = false;
     int n = (int)poly.size();
 
     for (int i = 0, j = n - 1; i < n; j = i++)
     {
-         zVector& pi = poly[i];
-         zVector& pj = poly[j];
+        zVector& pi = poly[i];
+        zVector& pj = poly[j];
 
         bool intersect = ((pi.y > p.y) != (pj.y > p.y)) &&
             (p.x < (pj.x - pi.x) * (p.y - pi.y) / (pj.y - pi.y + 1e-12f) + pi.x);
@@ -103,7 +103,7 @@ bool pointInPolygon( zVector& p,  std::vector<zVector>& poly)
 }
 
 // signed distance to polygon: negative inside, positive outside
-float signedDistanceToPolygon( zVector& p,  std::vector<zVector>& poly)
+float signedDistanceToPolygon(zVector& p, std::vector<zVector>& poly)
 {
     float minDist = 1e9f;
     int n = (int)poly.size();
@@ -120,7 +120,7 @@ float signedDistanceToPolygon( zVector& p,  std::vector<zVector>& poly)
 }
 
 // 2D DCT-II (orthonormal) on square input[N][N]
-void DCT2( std::vector<std::vector<float>>& input,
+void DCT2(std::vector<std::vector<float>>& input,
     std::vector<std::vector<float>>& output)
 {
     int N = (int)input.size();
@@ -128,8 +128,8 @@ void DCT2( std::vector<std::vector<float>>& input,
 
     output.assign(N, std::vector<float>(M, 0.0f));
 
-     float cN = std::sqrt(2.0f / (float)N);
-     float cM = std::sqrt(2.0f / (float)M);
+    float cN = std::sqrt(2.0f / (float)N);
+    float cM = std::sqrt(2.0f / (float)M);
 
     for (int u = 0; u < N; u++)
     {
@@ -157,7 +157,7 @@ void DCT2( std::vector<std::vector<float>>& input,
 }
 
 // Inverse 2D DCT (for visualization)
-void IDCT2( std::vector<std::vector<float>>& input,
+void IDCT2(std::vector<std::vector<float>>& input,
     std::vector<std::vector<float>>& output)
 {
     int N = (int)input.size();
@@ -165,8 +165,8 @@ void IDCT2( std::vector<std::vector<float>>& input,
 
     output.assign(N, std::vector<float>(M, 0.0f));
 
-     float cN = std::sqrt(2.0f / (float)N);
-     float cM = std::sqrt(2.0f / (float)M);
+    float cN = std::sqrt(2.0f / (float)N);
+    float cM = std::sqrt(2.0f / (float)M);
 
     for (int x = 0; x < N; x++)
     {
@@ -192,7 +192,7 @@ void IDCT2( std::vector<std::vector<float>>& input,
 }
 
 // Flatten full DCT (row-major)
-std::vector<float> flatten( std::vector<std::vector<float>>& mat)
+std::vector<float> flatten(std::vector<std::vector<float>>& mat)
 {
     int N = (int)mat.size();
     int M = (int)mat[0].size();
@@ -211,7 +211,7 @@ std::vector<float> flatten( std::vector<std::vector<float>>& mat)
 }
 
 // Take top-K by magnitude, keeping positions implicit (PCA style on coefficient vector)
-std::vector<float> topKByMagnitude( std::vector<float>& in, int K)
+std::vector<float> topKByMagnitude(std::vector<float>& in, int K)
 {
     std::vector<float> tmp = in;
     if (K > (int)tmp.size()) K = (int)tmp.size();
@@ -466,26 +466,24 @@ void reconstructSampleSDF(int idx)
     if (g_dctFeatures.empty()) return;
     idx = std::clamp(idx, 0, (int)g_dctFeatures.size() - 1);
 
-    // 1) Forward AE
-    std::vector<float> x = g_dctFeatures[idx];
-    std::vector<float> yNorm = g_autoencoder.forward(x);
+    const std::vector<float>& featNorm = g_autoencoder.forward( g_dctFeatures[idx] );
 
-    // 2) Un-normalise back to DCT coefficient scale
-    std::vector<float> y(yNorm.size());
-    for (size_t i = 0; i < y.size(); i++)
-        y[i] = yNorm[i] * g_featStd + g_featMean;
+    // 1) Un-normalise
+    std::vector<float> feat(featNorm.size());
+    for (size_t i = 0; i < feat.size(); i++)
+        feat[i] = featNorm[i] * g_featStd + g_featMean;
 
-    // 3) Fill low-frequency block
+    // 2) Fill DCT grid
     std::vector<std::vector<float>> dctRec(RES, std::vector<float>(RES, 0.0f));
-    int blockN = (int)std::sqrt((int)y.size());
-    if (blockN * blockN > (int)y.size()) blockN--;
+    int blockN = (int)std::sqrt((int)feat.size());
+    if (blockN * blockN > (int)feat.size()) blockN--;
 
     int k = 0;
     for (int u = 0; u < blockN; u++)
         for (int v = 0; v < blockN; v++)
-            if (k < (int)y.size()) dctRec[u][v] = y[k++];
+            if (k < feat.size()) dctRec[u][v] = feat[k++];
 
-    // 4) IDCT
+    // 3) IDCT
     IDCT2(dctRec, g_sdfReructed);
 
     // 5) Original SDF for comparison
@@ -587,6 +585,45 @@ void reconstructFromStoredFeatures(int idx)
     std::cout << "Reconstructed SDF from stored normalized features[" << idx << "]\n";
 }
 
+void trainSGD(MLP& net,
+    std::vector<std::vector<float>>& X,
+    std::vector<std::vector<float>>& Y,
+    int epochs,
+    float lr,
+    int batchSize)
+{
+    std::vector<int> indices(X.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    std::mt19937 rng(std::random_device{}());
+
+    for (int epoch = 0; epoch < epochs; ++epoch)
+    {
+        std::shuffle(indices.begin(), indices.end(), rng);
+        float totalLoss = 0.0f;
+
+        for (int b = 0; b < X.size(); b += batchSize)
+        {
+            int end = std::min((int)X.size(), b + batchSize);
+            for (int i = b; i < end; ++i)
+            {
+                int idx = indices[i];
+                std::vector<float> gradOut;
+
+                // Forward + backward
+                net.computeGradient(X[idx], Y[idx], gradOut);
+                net.backward(gradOut, lr);
+
+                // Compute loss for tracking
+                auto y_pred = net.forward(X[idx]);
+                totalLoss += net.computeLoss(y_pred, Y[idx]);
+            }
+        }
+
+        totalLoss /= X.size();
+        printf("Epoch %d | Loss: %.6f\n", epoch, totalLoss);
+    }
+}
+
 
 //---------------------------------------------------------------------------
 // zSpace Hooks
@@ -604,7 +641,7 @@ void setup()
 
     // PCA-style linear AE: 2048 -> 16 -> 2048
     // (Assumes genericMLP is in linear mode: no tanh)
-    g_autoencoder.initialize(TOP_K, { LATENT_DIM }, TOP_K);
+    g_autoencoder.initialize(TOP_K, { 8,LATENT_DIM,8 }, TOP_K);
 
     g_isTraining = false;
     g_lastLoss = 0.0f;
@@ -643,7 +680,7 @@ void update(int value)
 
     cout << g_lastLoss << endl;
 
-  //  reructSample0SDF();
+    //  reructSample0SDF();
 }
 
 //void drawSDF( std::vector<std::vector<float>>& sdf, float px, float py, float scale)
@@ -748,7 +785,7 @@ void draw()
     glColor3f(0, 0, 0);
     for (int pi = 0; pi < (int)g_polygons.size(); pi++)
     {
-         auto& poly = g_polygons[pi];
+        auto& poly = g_polygons[pi];
         int n = (int)poly.size();
         for (int i = 0; i < n; i++)
         {
@@ -766,10 +803,10 @@ void draw()
     char s[250];
     sprintf(s, "Left: original SDF[%i], Middle: g_sdfFromTopK,  Right: AE-PCA reconstructed", g_currentIndex);
     setup2d();
-        drawString(s, 20, 410);
-        drawString(std::string("Training [t]: ") + (g_isTraining ? "ON" : "OFF"), 20, 430);
-        drawString("Last avg loss: " + std::to_string(g_lastLoss), 20, 450);
-        drawString("Press 'r' to regenerate polygons", 20, 470);
+    drawString(s, 20, 410);
+    drawString(std::string("Training [t]: ") + (g_isTraining ? "ON" : "OFF"), 20, 430);
+    drawString("Last avg loss: " + std::to_string(g_lastLoss), 20, 450);
+    drawString("Press 'r' to regenerate polygons", 20, 470);
     restore3d();
 }
 
@@ -785,19 +822,61 @@ void keyPress(unsigned char k, int xm, int ym)
     if (k == 't')
     {
         g_isTraining = !g_isTraining;
-        reconstructSampleSDF(g_currentIndex);
+       // reconstructSampleSDF(g_currentIndex);
     }
 
-    if (k >= '0' && k <= '5')
+    if (k >= '0' && k <= '4')
     {
         int idx = k - '0';
         if (idx < NUM_POLYGONS)
         {
             g_currentIndex = idx;
-           
+
             reconstructSampleSDF(g_currentIndex);
-           // reconstructFromTopKDCT(g_currentIndex);
+            // reconstructFromTopKDCT(g_currentIndex);
             reconstructFromStoredFeatures(g_currentIndex);
+
+            //
+
+
+
+            std::vector<float> x = g_dctFeatures[g_currentIndex];
+            std::vector<float> y0 = g_autoencoder.forward(x);
+
+            float minX = std::numeric_limits<float>::max();
+            float maxX = std::numeric_limits<float>::lowest();
+            float minY = std::numeric_limits<float>::max();
+            float maxY = std::numeric_limits<float>::lowest();
+
+            double diffSum = 0.0;
+            float diffMin = std::numeric_limits<float>::max();
+            float diffMax = std::numeric_limits<float>::lowest();
+
+            for (int i = 0; i < (int)y0.size(); i++)
+            {
+                float diff = y0[i] - x[i];
+
+                if(diff > 1e-2)
+                printf("%.4f, %.4f, %.4f\n", y0[i], x[i], diff);
+
+                diffSum += std::fabs(diff);
+                diffMin = std::min(diffMin, diff);
+                diffMax = std::max(diffMax, diff);
+
+                minX = std::min(minX, x[i]);
+                maxX = std::max(maxX, x[i]);
+                minY = std::min(minY, y0[i]);
+                maxY = std::max(maxY, y0[i]);
+            }
+
+            std::cout << "--------------------------\n";
+            std::cout << "AE output vs input summary:\n";
+            std::cout << "  X range  = [" << minX << ", " << maxX << "]\n";
+            std::cout << "  Y range  = [" << minY << ", " << maxY << "]\n";
+            std::cout << "  Diff min = " << diffMin
+                << "  max = " << diffMax
+                << "  mean |diff| = "
+                << diffSum / (double)y0.size() << std::endl;
         }
     }
 
@@ -820,20 +899,47 @@ void keyPress(unsigned char k, int xm, int ym)
     if (k == 'u')
     {
 
-        for( int n = 0 ; n < g_dctFeatures.size() ; n++)
+        for (int n = 0; n < g_dctFeatures.size(); n++)
         {
-            std::vector<float> x = g_dctFeatures[0];
+            std::vector<float> x = g_dctFeatures[n];
             std::vector<float> y0 = g_autoencoder.forward(x);
 
-            for (int i = 0; i < y0.size(); i++)
+            float minX = std::numeric_limits<float>::max();
+            float maxX = std::numeric_limits<float>::lowest();
+            float minY = std::numeric_limits<float>::max();
+            float maxY = std::numeric_limits<float>::lowest();
+
+            double diffSum = 0.0;
+            float diffMin = std::numeric_limits<float>::max();
+            float diffMax = std::numeric_limits<float>::lowest();
+
+            for (int i = 0; i < (int)y0.size(); i++)
             {
-                printf("%.4f,%.4f,%.4f,\n", y0[i], x[i], y0[i] - x[i]);
+                float diff = y0[i] - x[i];
+                printf("%.4f, %.4f, %.4f\n", y0[i], x[i], diff);
+
+                diffSum += std::fabs(diff);
+                diffMin = std::min(diffMin, diff);
+                diffMax = std::max(diffMax, diff);
+
+                minX = std::min(minX, x[i]);
+                maxX = std::max(maxX, x[i]);
+                minY = std::min(minY, y0[i]);
+                maxY = std::max(maxY, y0[i]);
             }
 
-            cout << " -------------------------- " << endl;
+            std::cout << "--------------------------\n";
+            std::cout << "AE output vs input summary:\n";
+            std::cout << "  X range  = [" << minX << ", " << maxX << "]\n";
+            std::cout << "  Y range  = [" << minY << ", " << maxY << "]\n";
+            std::cout << "  Diff min = " << diffMin
+                << "  max = " << diffMax
+                << "  mean |diff| = "
+                << diffSum / (double)y0.size() << std::endl;
+
         }
 
-        
+
 
     }
 }
