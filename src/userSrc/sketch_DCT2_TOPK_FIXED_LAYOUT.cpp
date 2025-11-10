@@ -20,10 +20,10 @@ using namespace zSpace;
 // ------------------------------------------------------------
 // Config
 // ------------------------------------------------------------
-#define RES 100
+#define RES 64
 #define NUM_SHAPES 5
 #define TOP_K 1024              // number of fixed-layout DCT coeffs
-#define LATENT_DIM 4          // bottleneck dimension for AE : 
+#define LATENT_DIM 3          // bottleneck dimension for AE : 
 
 // ------------------------------------------------------------
 // Jet colormap
@@ -39,7 +39,7 @@ inline void getJetColor(float value, float& r, float& g, float& b)
     b = std::clamp(std::min(fourValue + 0.5f, -fourValue + 2.5f), 0.0f, 1.0f);
 }
 
-inline Alice::vec zVecToAliceVec( zVector& in)
+inline Alice::vec zVecToAliceVec(zVector& in)
 {
     return Alice::vec(in.x, in.y, in.z);
 }
@@ -52,12 +52,12 @@ inline float clampFloat(float v, float vmin, float vmax)
     return (v < vmin) ? vmin : (v > vmax) ? vmax : v;
 }
 
-inline float lengthSq( zVector& v)
+inline float lengthSq(zVector& v)
 {
     return v.x * v.x + v.y * v.y + v.z * v.z;
 }
 
-float distancePointToSegment( zVector& p,  zVector& a,  zVector& b)
+float distancePointToSegment(zVector& p, zVector& a, zVector& b)
 {
     zVector ab = b - a;
     float denom = lengthSq(ab);
@@ -75,15 +75,15 @@ float distancePointToSegment( zVector& p,  zVector& a,  zVector& b)
     return std::sqrt(lengthSq(d));
 }
 
-bool pointInPolygon( zVector& p,  std::vector<zVector>& poly)
+bool pointInPolygon(zVector& p, std::vector<zVector>& poly)
 {
     bool inside = false;
     int n = (int)poly.size();
 
     for (int i = 0, j = n - 1; i < n; j = i++)
     {
-         zVector& pi = poly[i];
-         zVector& pj = poly[j];
+        zVector& pi = poly[i];
+        zVector& pj = poly[j];
 
         bool intersect =
             ((pi.y > p.y) != (pj.y > p.y)) &&
@@ -95,7 +95,7 @@ bool pointInPolygon( zVector& p,  std::vector<zVector>& poly)
     return inside;
 }
 
-float sdf_Polygon( zVector& p,  std::vector<zVector>& poly)
+float sdf_Polygon(zVector& p, std::vector<zVector>& poly)
 {
     float minDist = 1e9f;
     int n = (int)poly.size();
@@ -186,60 +186,160 @@ std::vector<zVector> randomPolygon(int n, float radiusMin = 0.3f, float radiusMa
 // ------------------------------------------------------------
 // DCT-II (orthonormal) and inverse
 // ------------------------------------------------------------
+//void computeDCT(float in[RES][RES], float out[RES][RES])
+//{
+//    for (int u = 0; u < RES; u++)
+//    {
+//        float Cu = (u == 0) ? (1.0f / std::sqrt(2.0f)) : 1.0f;
+//
+//        for (int v = 0; v < RES; v++)
+//        {
+//            float Cv = (v == 0) ? (1.0f / std::sqrt(2.0f)) : 1.0f;
+//
+//            float sum = 0.0f;
+//            for (int x = 0; x < RES; x++)
+//            {
+//                float ax = std::cos(PI * (2.0f * x + 1.0f) * (float)u / (2.0f * RES));
+//                for (int y = 0; y < RES; y++)
+//                {
+//                    float ay = std::cos(PI * (2.0f * y + 1.0f) * (float)v / (2.0f * RES));
+//                    sum += in[x][y] * ax * ay;
+//                }
+//            }
+//
+//            float cN = std::sqrt(2.0f / (float)RES);
+//            float cM = std::sqrt(2.0f / (float)RES);
+//            out[u][v] = cN * cM * Cu * Cv * sum;
+//        }
+//    }
+//}
+
+//void computeInverseDCT(float in[RES][RES], float out[RES][RES])
+//{
+//    for (int x = 0; x < RES; x++)
+//    {
+//        for (int y = 0; y < RES; y++)
+//        {
+//            float sum = 0.0f;
+//            for (int u = 0; u < RES; u++)
+//            {
+//                float Cu = (u == 0) ? (1.0f / std::sqrt(2.0f)) : 1.0f;
+//                float ax = std::cos(PI * (2.0f * x + 1.0f) * (float)u / (2.0f * RES));
+//
+//                for (int v = 0; v < RES; v++)
+//                {
+//                    float Cv = (v == 0) ? (1.0f / std::sqrt(2.0f)) : 1.0f;
+//                    float ay = std::cos(PI * (2.0f * y + 1.0f) * (float)v / (2.0f * RES));
+//
+//                    float cN = std::sqrt(2.0f / (float)RES);
+//                    float cM = std::sqrt(2.0f / (float)RES);
+//                    sum += cN * cM * Cu * Cv * in[u][v] * ax * ay;
+//                }
+//            }
+//            out[x][y] = sum;
+//        }
+//    }
+//}
+
 void computeDCT(float in[RES][RES], float out[RES][RES])
 {
-    for (int u = 0; u < RES; u++)
+    static float cosTable[RES][RES];
+    static bool init = false;
+
+    if (!init)
     {
-        float Cu = (u == 0) ? (1.0f / std::sqrt(2.0f)) : 1.0f;
-
-        for (int v = 0; v < RES; v++)
+        for (int n = 0; n < RES; n++)
         {
-            float Cv = (v == 0) ? (1.0f / std::sqrt(2.0f)) : 1.0f;
+            for (int k = 0; k < RES; k++)
+            {
+                cosTable[n][k] = cos(PI * (2.0f * n + 1.0f) * k / (2.0f * RES));
+            }
+        }
+        init = true;
+    }
 
+    // --- 1D DCT on rows ---
+    float temp[RES][RES];
+    for (int y = 0; y < RES; y++)
+    {
+        for (int u = 0; u < RES; u++)
+        {
+            float Cu = (u == 0) ? (1.0f / sqrt(2.0f)) : 1.0f;
             float sum = 0.0f;
             for (int x = 0; x < RES; x++)
             {
-                float ax = std::cos(PI * (2.0f * x + 1.0f) * (float)u / (2.0f * RES));
-                for (int y = 0; y < RES; y++)
-                {
-                    float ay = std::cos(PI * (2.0f * y + 1.0f) * (float)v / (2.0f * RES));
-                    sum += in[x][y] * ax * ay;
-                }
+                sum += in[x][y] * cosTable[x][u];
             }
+            temp[u][y] = sum * Cu * sqrt(2.0f / (float)RES);
+        }
+    }
 
-            float cN = std::sqrt(2.0f / (float)RES);
-            float cM = std::sqrt(2.0f / (float)RES);
-            out[u][v] = cN * cM * Cu * Cv * sum;
+    // --- 1D DCT on columns ---
+    for (int u = 0; u < RES; u++)
+    {
+        for (int v = 0; v < RES; v++)
+        {
+            float Cv = (v == 0) ? (1.0f / sqrt(2.0f)) : 1.0f;
+            float sum = 0.0f;
+            for (int y = 0; y < RES; y++)
+            {
+                sum += temp[u][y] * cosTable[y][v];
+            }
+            out[u][v] = sum * Cv * sqrt(2.0f / (float)RES);
         }
     }
 }
+
 
 void computeInverseDCT(float in[RES][RES], float out[RES][RES])
 {
+    static float cosTable[RES][RES];
+    static bool init = false;
+
+    if (!init)
+    {
+        for (int n = 0; n < RES; n++)
+        {
+            for (int k = 0; k < RES; k++)
+            {
+                cosTable[n][k] = cos(PI * (2.0f * n + 1.0f) * k / (2.0f * RES));
+            }
+        }
+        init = true;
+    }
+
+    // --- 1D inverse DCT on rows ---
+    float temp[RES][RES];
     for (int x = 0; x < RES; x++)
     {
-        for (int y = 0; y < RES; y++)
+        for (int n = 0; n < RES; n++)
         {
             float sum = 0.0f;
-            for (int u = 0; u < RES; u++)
+            for (int k = 0; k < RES; k++)
             {
-                float Cu = (u == 0) ? (1.0f / std::sqrt(2.0f)) : 1.0f;
-                float ax = std::cos(PI * (2.0f * x + 1.0f) * (float)u / (2.0f * RES));
-
-                for (int v = 0; v < RES; v++)
-                {
-                    float Cv = (v == 0) ? (1.0f / std::sqrt(2.0f)) : 1.0f;
-                    float ay = std::cos(PI * (2.0f * y + 1.0f) * (float)v / (2.0f * RES));
-
-                    float cN = std::sqrt(2.0f / (float)RES);
-                    float cM = std::sqrt(2.0f / (float)RES);
-                    sum += cN * cM * Cu * Cv * in[u][v] * ax * ay;
-                }
+                float Cu = (k == 0) ? 1.0f / sqrt(2.0f) : 1.0f;
+                sum += Cu * in[k][x] * cosTable[n][k];
             }
-            out[x][y] = sum;
+            temp[n][x] = sum * sqrt(2.0f / (float)RES);
+        }
+    }
+
+    // --- 1D inverse DCT on columns ---
+    for (int y = 0; y < RES; y++)
+    {
+        for (int x = 0; x < RES; x++)
+        {
+            float sum = 0.0f;
+            for (int k = 0; k < RES; k++)
+            {
+                float Cv = (k == 0) ? 1.0f / sqrt(2.0f) : 1.0f;
+                sum += Cv * temp[x][k] * cosTable[y][k];
+            }
+            out[x][y] = sum * sqrt(2.0f / (float)RES);
         }
     }
 }
+
 
 // ------------------------------------------------------------
 // Data structures
@@ -284,11 +384,11 @@ float g_lastLoss = 0.0f;
 
 enum TrainMode
 {
-    TRAIN_SGD = 0,
-    TRAIN_ADAM = 1
+    TRAIN_SGD = 1,
+    TRAIN_ADAM = 0
 };
 
-TrainMode g_trainMode = TRAIN_ADAM;
+TrainMode g_trainMode = TRAIN_SGD;
 
 // Current selection & viz fields
 int g_currentShape = 0;
@@ -338,7 +438,7 @@ void drawSDF(float fld[RES][RES], float px, float py, float scale)
     }
 
     glEnd();
-   // restore3d();
+    // restore3d();
 }
 
 // ------------------------------------------------------------
@@ -363,7 +463,7 @@ void generateDataset()
                 float x = (float)i / (RES - 1) * 2.0f - 1.0f;
                 float y = (float)j / (RES - 1) * 2.0f - 1.0f;
                 zVector p(x, y, 0);
-                g_samples[s].sdf[i][j] = (s == 0) ? sdf_Voronoi(x,y) : sdf_Polygon(p, g_samples[s].poly);
+                g_samples[s].sdf[i][j] = (s == 0) ? sdf_Voronoi(x, y) : sdf_Polygon(p, g_samples[s].poly);
             }
         }
 
@@ -382,7 +482,7 @@ void generateDataset()
         }
 
         std::sort(coeffs.begin(), coeffs.end(),
-            []( auto& a,  auto& b)
+            [](auto& a, auto& b)
             {
                 return std::get<0>(a) > std::get<0>(b);
             });
@@ -432,7 +532,7 @@ void computeFixedLayout()
     }
 
     std::sort(ranked.begin(), ranked.end(),
-        []( auto& a,  auto& b)
+        [](auto& a, auto& b)
         {
             return a.second > b.second;
         });
@@ -802,7 +902,7 @@ void reconstruct_from_fixed_layout_truth(int s, float out[RES][RES])
     float dctTmp[RES][RES] = { 0 };
 
     // Use the fixed-layout feature vector directly
-     std::vector<float>& feat = g_fixedFeatures[s];
+    std::vector<float>& feat = g_fixedFeatures[s];
     for (int i = 0; i < TOP_K; i++)
     {
         int u = g_fixedU[i];
@@ -896,7 +996,7 @@ void rebuildAll()
     g_autoencoder.initialize
     (
         TOP_K,
-        { 32, LATENT_DIM, 32 },
+        { 32,LATENT_DIM,32 },
         TOP_K
     );
 
@@ -950,10 +1050,10 @@ void draw()
     }
 
     // Original SDF
-    drawSDF(g_samples[g_currentShape].sdf, -(float(RES*2+10)), -float(RES * 0.5), 1.0f);
+    drawSDF(g_samples[g_currentShape].sdf, -(float(RES * 2 + 10)), -float(RES * 0.5), 1.0f);
 
     // Fixed-layout reconstructionruction (truth coefficients)
-    drawSDF(g_reconFixed, -(float(RES * 0.5 )), -float(RES * 0.5), 1.0f);
+    drawSDF(g_reconFixed, -(float(RES * 0.5)), -float(RES * 0.5), 1.0f);
 
     // AE reruction
     drawSDF(g_reconAE, (float(RES + 10)), -float(RES * 0.5), 1.0f);
@@ -967,8 +1067,8 @@ void draw()
     drawString(buf, 20, 40);
 
     drawString("Left: Original SDF", 20, 60);
-    drawString("Middle: Fixed-layout reruction (true coeffs)", 20, 80);
-    drawString("Right: Autoencoder reruction", 20, 100);
+    drawString("Middle: Fixed-layout reconstruction (true coeffs)", 20, 80);
+    drawString("Right: Autoencoder reconstruction", 20, 100);
 
     drawString(std::string("Training [t]: ") + (g_isTraining ? "ON" : "OFF"), 20, 130);
     drawString(std::string("Mode [m]: ") + ((g_trainMode == TRAIN_SGD) ? "SGD" : "Adam"), 20, 150);
