@@ -23,7 +23,7 @@ using namespace zSpace;
 #define RES 64
 #define NUM_SHAPES 5
 #define TOP_K 1024              // number of fixed-layout DCT coeffs
-#define LATENT_DIM 3          // bottleneck dimension for AE : 
+#define LATENT_DIM 16          // bottleneck dimension for AE : 
 
 // ------------------------------------------------------------
 // Jet colormap
@@ -160,7 +160,6 @@ float sdf_Voronoi(float x, float y)
     return sdf;
 }
 
-
 std::vector<zVector> randomPolygon(int n, float radiusMin = 0.3f, float radiusMax = 0.7f)
 {
     std::vector<zVector> poly;
@@ -183,63 +182,10 @@ std::vector<zVector> randomPolygon(int n, float radiusMin = 0.3f, float radiusMa
     return poly;
 }
 
-// ------------------------------------------------------------
-// DCT-II (orthonormal) and inverse
-// ------------------------------------------------------------
-//void computeDCT(float in[RES][RES], float out[RES][RES])
-//{
-//    for (int u = 0; u < RES; u++)
-//    {
-//        float Cu = (u == 0) ? (1.0f / std::sqrt(2.0f)) : 1.0f;
-//
-//        for (int v = 0; v < RES; v++)
-//        {
-//            float Cv = (v == 0) ? (1.0f / std::sqrt(2.0f)) : 1.0f;
-//
-//            float sum = 0.0f;
-//            for (int x = 0; x < RES; x++)
-//            {
-//                float ax = std::cos(PI * (2.0f * x + 1.0f) * (float)u / (2.0f * RES));
-//                for (int y = 0; y < RES; y++)
-//                {
-//                    float ay = std::cos(PI * (2.0f * y + 1.0f) * (float)v / (2.0f * RES));
-//                    sum += in[x][y] * ax * ay;
-//                }
-//            }
-//
-//            float cN = std::sqrt(2.0f / (float)RES);
-//            float cM = std::sqrt(2.0f / (float)RES);
-//            out[u][v] = cN * cM * Cu * Cv * sum;
-//        }
-//    }
-//}
 
-//void computeInverseDCT(float in[RES][RES], float out[RES][RES])
-//{
-//    for (int x = 0; x < RES; x++)
-//    {
-//        for (int y = 0; y < RES; y++)
-//        {
-//            float sum = 0.0f;
-//            for (int u = 0; u < RES; u++)
-//            {
-//                float Cu = (u == 0) ? (1.0f / std::sqrt(2.0f)) : 1.0f;
-//                float ax = std::cos(PI * (2.0f * x + 1.0f) * (float)u / (2.0f * RES));
-//
-//                for (int v = 0; v < RES; v++)
-//                {
-//                    float Cv = (v == 0) ? (1.0f / std::sqrt(2.0f)) : 1.0f;
-//                    float ay = std::cos(PI * (2.0f * y + 1.0f) * (float)v / (2.0f * RES));
-//
-//                    float cN = std::sqrt(2.0f / (float)RES);
-//                    float cM = std::sqrt(2.0f / (float)RES);
-//                    sum += cN * cM * Cu * Cv * in[u][v] * ax * ay;
-//                }
-//            }
-//            out[x][y] = sum;
-//        }
-//    }
-//}
+// ------------------------------------------------------------
+// DCT AND iDCT
+// ------------------------------------------------------------
 
 void computeDCT(float in[RES][RES], float out[RES][RES])
 {
@@ -289,7 +235,6 @@ void computeDCT(float in[RES][RES], float out[RES][RES])
         }
     }
 }
-
 
 void computeInverseDCT(float in[RES][RES], float out[RES][RES])
 {
@@ -690,7 +635,7 @@ void buildTrainingData()
 
 
 // ------------------------------------------------------------
-// 5) AE training: SGD and Adam (from your previous sketch style)
+// 5) AE training: SGD and Adam 
 // ------------------------------------------------------------
 float trainSGD(MLP& net,
     std::vector<std::vector<float>>& X,
@@ -893,7 +838,7 @@ float trainAdam(MLP& net,
 }
 
 // ------------------------------------------------------------
-// 6) Reruction from fixed layout (ground truth, no AE)
+// 6) reconstruct from fixed layout (ground truth, no AE)
 // ------------------------------------------------------------
 void reconstruct_from_fixed_layout_truth(int s, float out[RES][RES])
 {
@@ -914,40 +859,8 @@ void reconstruct_from_fixed_layout_truth(int s, float out[RES][RES])
 }
 
 // ------------------------------------------------------------
-// 7) Reruction from AE output
+// 7) reconstruct from AE output
 // ------------------------------------------------------------
-//void reconstruct_from_AE_output(int s, float out[RES][RES])
-//{
-//    if (s < 0 || s >= NUM_SHAPES) return;
-//
-//    // Input to AE is normalised fixed-layout features
-//     std::vector<float>& xNorm = g_trainX[s];
-//
-//    // Forward through AE
-//    std::vector<float> yNorm = g_autoencoder.forward(xNorm);
-//
-//    // De-normalise
-//    std::vector<float> y(yNorm.size());
-//    for (int i = 0; i < (int)yNorm.size(); i++)
-//    {
-//        y[i] = yNorm[i] * g_featStd + g_featMean;
-//    }
-//
-//    // Fill DCT grid at fixed positions
-//    float dctTmp[RES][RES] = { 0 };
-//    int K = std::min(TOP_K, (int)y.size());
-//
-//    for (int i = 0; i < K; i++)
-//    {
-//        int u = g_fixedU[i];
-//        int v = g_fixedV[i];
-//        dctTmp[u][v] = y[i];
-//    }
-//
-//    // IDCT -> SDF
-//    computeInverseDCT(dctTmp, out);
-//}
-
 void reconstruct_from_AE_output(int s, float out[RES][RES])
 {
     if (s < 0 || s >= NUM_SHAPES) return;
@@ -992,7 +905,7 @@ void rebuildAll()
     buildTrainingData();
 
     // Initialize AE: input=TOP_K, hidden -> LATENT -> hidden, output=TOP_K
-    // Using tanh in hidden, linear output in genericMLP (as per your previous usage)
+    // Using tanh in hidden, linear output in genericMLP 
     g_autoencoder.initialize
     (
         TOP_K,
