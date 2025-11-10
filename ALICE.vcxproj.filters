@@ -91,5 +91,7 @@
     </ClCompile>
     <ClCompile Include="src\userSrc\Sketch_ON.cpp" />
     <ClCompile Include="src\userSrc\sketch_SDF_DCT_AEC_PCA.cpp" />
+    <ClCompile Include="src\userSrc\sketch_dct2_topK_reconstruction_test.cpp" />
+    <ClCompile Include="src\userSrc\sketch_DCT2_TOPK_FIXED_LAYOUT.cpp" />
   </ItemGroup>
 </Project>

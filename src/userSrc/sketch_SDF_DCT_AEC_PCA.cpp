@@ -23,7 +23,7 @@ using namespace zSpace;
 
 static  int RES = 128;          // SDF grid resolution
 static  int NUM_POLYGONS = 5;   // number of training shapes
-static  int TOP_K = 32*32;       // number of DCT coeffs used
+static  int TOP_K = 64*64;       // number of DCT coeffs used
 static  int LATENT_DIM = NUM_POLYGONS - 1;    // PCA dimensionality ( number of data points - 1)
 
 //---------------------------------------------------------------------------
@@ -585,7 +585,7 @@ void reconstructFromStoredFeatures(int idx)
     std::cout << "Reconstructed SDF from stored normalized features[" << idx << "]\n";
 }
 
-void trainSGD(MLP& net,
+float trainSGD(MLP& net,
     std::vector<std::vector<float>>& X,
     std::vector<std::vector<float>>& Y,
     int epochs,
@@ -596,10 +596,11 @@ void trainSGD(MLP& net,
     std::iota(indices.begin(), indices.end(), 0);
     std::mt19937 rng(std::random_device{}());
 
+    float totalLoss = 0.0f;
     for (int epoch = 0; epoch < epochs; ++epoch)
     {
         std::shuffle(indices.begin(), indices.end(), rng);
-        float totalLoss = 0.0f;
+        totalLoss = 0.0f;
 
         for (int b = 0; b < X.size(); b += batchSize)
         {
@@ -622,6 +623,155 @@ void trainSGD(MLP& net,
         totalLoss /= X.size();
         printf("Epoch %d | Loss: %.6f\n", epoch, totalLoss);
     }
+
+    return totalLoss;
+}
+
+// -----------------------------------------------------------------------------
+// Adam Optimizer-based training loop for MLP
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Stable Adam Optimizer training for MLP
+// -----------------------------------------------------------------------------
+float trainAdam(MLP& net,
+    std::vector<std::vector<float>>& X,
+    std::vector<std::vector<float>>& Y,
+    int epochs = 500,
+    float lr = 1e-4f,           // smaller LR for stability
+    float beta1 = 0.9f,
+    float beta2 = 0.999f,
+    float eps = 1e-8f,
+    int batchSize = 8)
+{
+    // Allocate Adam states (same shapes as weights/biases)
+    std::vector<std::vector<std::vector<float>>> mW = net.W;
+    std::vector<std::vector<std::vector<float>>> vW = net.W;
+    std::vector<std::vector<float>> mB = net.b;
+    std::vector<std::vector<float>> vB = net.b;
+
+    // Initialize to zeros
+    for (auto& L : mW) for (auto& r : L) std::fill(r.begin(), r.end(), 0.0f);
+    for (auto& L : vW) for (auto& r : L) std::fill(r.begin(), r.end(), 0.0f);
+    for (auto& b : mB) std::fill(b.begin(), b.end(), 0.0f);
+    for (auto& b : vB) std::fill(b.begin(), b.end(), 0.0f);
+
+    std::vector<int> indices(X.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    std::mt19937 rng(std::random_device{}());
+
+    float totalLoss = 0.0f;
+    int t = 0; // timestep for bias correction
+
+    for (int epoch = 0; epoch < epochs; ++epoch)
+    {
+        std::shuffle(indices.begin(), indices.end(), rng);
+        totalLoss = 0.0f;
+
+        for (int b = 0; b < X.size(); b += batchSize)
+        {
+            int end = std::min((int)X.size(), b + batchSize);
+
+            for (int i = b; i < end; ++i)
+            {
+                int idx = indices[i];
+                t++;
+
+                // Forward pass
+                std::vector<float> y_pred = net.forward(X[idx]);
+
+                // Compute loss and simple output gradient
+                float loss = net.computeLoss(y_pred, Y[idx]);
+                totalLoss += loss;
+
+                std::vector<float> gradOut(y_pred.size());
+                for (int j = 0; j < y_pred.size(); ++j)
+                {
+                    // Scaled derivative of MSE wrt output
+                    gradOut[j] = (y_pred[j] - Y[idx][j]) / (float)y_pred.size();
+                }
+
+                // ---- Backpropagate manually to get true gradients ----
+                std::vector<std::vector<std::vector<float>>> gradW = net.W;
+                std::vector<std::vector<float>> gradB = net.b;
+                for (auto& L : gradW) for (auto& r : L) std::fill(r.begin(), r.end(), 0.0f);
+                for (auto& bL : gradB) std::fill(bL.begin(), bL.end(), 0.0f);
+
+                std::vector<std::vector<float>> deltas(net.W.size());
+                deltas.back() = gradOut; // last layer delta
+
+                // backward pass to compute per-layer gradients
+                for (int l = net.W.size() - 1; l >= 0; --l)
+                {
+                    std::vector<float>& delta = deltas[l];
+                    std::vector<float> prevActiv = net.activations[l];
+                    gradB[l].resize(net.b[l].size());
+                    for (int iNeuron = 0; iNeuron < net.W[l].size(); ++iNeuron)
+                    {
+                        for (int jInput = 0; jInput < net.W[l][iNeuron].size(); ++jInput)
+                        {
+                            gradW[l][iNeuron][jInput] += delta[iNeuron] * prevActiv[jInput];
+                        }
+                        gradB[l][iNeuron] += delta[iNeuron];
+                    }
+
+                    // Compute delta for previous layer (except first)
+                    if (l > 0)
+                    {
+                        std::vector<float> prevDelta(net.W[l][0].size(), 0.0f);
+                        for (int jInput = 0; jInput < net.W[l][0].size(); ++jInput)
+                        {
+                            float sum = 0.0f;
+                            for (int iNeuron = 0; iNeuron < net.W[l].size(); ++iNeuron)
+                            {
+                                sum += delta[iNeuron] * net.W[l][iNeuron][jInput];
+                            }
+                            float a = net.activations[l][jInput];
+                            prevDelta[jInput] = sum * (1 - a * a); // tanh' for hidden layers
+                        }
+                        deltas[l - 1] = prevDelta;
+                    }
+                }
+
+                // ---- Apply Adam updates ----
+                for (int l = 0; l < net.W.size(); ++l)
+                {
+                    for (int iNeuron = 0; iNeuron < net.W[l].size(); ++iNeuron)
+                    {
+                        for (int jInput = 0; jInput < net.W[l][iNeuron].size(); ++jInput)
+                        {
+                            float g = gradW[l][iNeuron][jInput];
+                            // Gradient clipping for safety
+                            g = std::clamp(g, -1.0f, 1.0f);
+
+                            mW[l][iNeuron][jInput] = beta1 * mW[l][iNeuron][jInput] + (1 - beta1) * g;
+                            vW[l][iNeuron][jInput] = beta2 * vW[l][iNeuron][jInput] + (1 - beta2) * g * g;
+
+                            float m_hat = mW[l][iNeuron][jInput] / (1 - std::pow(beta1, t));
+                            float v_hat = vW[l][iNeuron][jInput] / (1 - std::pow(beta2, t));
+
+                            net.W[l][iNeuron][jInput] -= lr * m_hat / (std::sqrt(v_hat) + eps);
+                        }
+
+                        float gb = gradB[l][iNeuron];
+                        gb = std::clamp(gb, -1.0f, 1.0f);
+                        mB[l][iNeuron] = beta1 * mB[l][iNeuron] + (1 - beta1) * gb;
+                        vB[l][iNeuron] = beta2 * vB[l][iNeuron] + (1 - beta2) * gb * gb;
+
+                        float m_hatb = mB[l][iNeuron] / (1 - std::pow(beta1, t));
+                        float v_hatb = vB[l][iNeuron] / (1 - std::pow(beta2, t));
+
+                        net.b[l][iNeuron] -= lr * m_hatb / (std::sqrt(v_hatb) + eps);
+                    }
+                }
+            }
+        }
+
+        totalLoss /= X.size();
+        printf("Epoch %d | Adam Loss: %.6f\n", epoch, totalLoss);
+    }
+
+    return totalLoss;
 }
 
 
@@ -658,29 +808,9 @@ void update(int value)
     float totalLoss = 0.0f;
     int count = 0;
 
-    // One epoch over all samples per frame
-    for (auto& x : g_dctFeatures)
-    {
-        std::vector<float> y_pred = g_autoencoder.forward(x);
-        float loss = g_autoencoder.computeLoss(y_pred, x);
-        totalLoss += loss;
-        count++;
-
-        std::vector<float> gradOut;
-        g_autoencoder.computeGradient(x, x, gradOut);
-        g_autoencoder.backward(gradOut, lr);
-    }
-
-    if (count > 0)
-    {
-        g_lastLoss = totalLoss / (float)count;
-    }
-
-
-
-    cout << g_lastLoss << endl;
-
-    //  reructSample0SDF();
+    g_lastLoss = trainSGD(g_autoencoder, g_dctFeatures, g_dctFeatures, 500, lr, 8);
+   // g_lastLoss = trainAdam(g_autoencoder, g_dctFeatures, g_dctFeatures, 800, 0.001f, 0.9f, 0.999f, 1e-8f, 8);
+   
 }
 
 //void drawSDF( std::vector<std::vector<float>>& sdf, float px, float py, float scale)
@@ -795,18 +925,21 @@ void draw()
     }
 
     // Visualize original vs reructed SDF of polygon[0]
-    drawSDF(g_sdfOriginal, 20.0f, 20.0f, 1.5f);   // left
-    drawSDF(g_sdfFromTopK, 220.0f, 20.0f, 1.5f);   // g_sdfFromTopK is either reconstructed from stored dctFeatures (reconstructFromStoredFeatures)or recomputed (reconstructFromTopKDCT)
-    drawSDF(g_sdfReructed, 420.0f, 20.0f, 1.5f);   // right
+    glColor3f(0, 0, 0);
+        drawSDF(g_sdfOriginal, 20.0f, 20.0f, 1.5f);   // left
+        drawSDF(g_sdfFromTopK, 220.0f, 20.0f, 1.5f);   // g_sdfFromTopK is either reconstructed from stored dctFeatures (reconstructFromStoredFeatures)or recomputed (reconstructFromTopKDCT)
+        drawSDF(g_sdfReructed, 420.0f, 20.0f, 1.5f);   // right
 
-    // Text UI
-    char s[250];
-    sprintf(s, "Left: original SDF[%i], Middle: g_sdfFromTopK,  Right: AE-PCA reconstructed", g_currentIndex);
+        // Text UI
+        char s[250];
+        sprintf(s, "Left: original SDF[%i], Middle: g_sdfFromTopK,  Right: AE-PCA reconstructed", g_currentIndex);
     setup2d();
-    drawString(s, 20, 410);
-    drawString(std::string("Training [t]: ") + (g_isTraining ? "ON" : "OFF"), 20, 430);
-    drawString("Last avg loss: " + std::to_string(g_lastLoss), 20, 450);
-    drawString("Press 'r' to regenerate polygons", 20, 470);
+
+        drawString(s, 20, 410);
+        drawString(std::string("Training [t]: ") + (g_isTraining ? "ON" : "OFF"), 20, 430);
+        drawString("Last avg loss: " + std::to_string(g_lastLoss), 20, 450);
+        drawString("Press 'r' to regenerate polygons", 20, 470);
+
     restore3d();
 }
 
