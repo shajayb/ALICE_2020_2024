@@ -381,7 +381,7 @@ void computeSDFandDCT()
     g_dctFeatures.reserve(NUM_POLYGONS);
     g_sdfOriginal.assign(RES, std::vector<float>(RES, 0.0f));
 
-    const float half = (float)RES * 0.5f;
+     float half = (float)RES * 0.5f;
 
     // Temporary store all raw features for later global normalisation
     std::vector<std::vector<float>> rawFeatures;
@@ -461,12 +461,12 @@ void computeSDFandDCT()
 }
 
 
-void reconstructSampleSDF(int idx)
+void reructSampleSDF(int idx)
 {
     if (g_dctFeatures.empty()) return;
     idx = std::clamp(idx, 0, (int)g_dctFeatures.size() - 1);
 
-    const std::vector<float>& featNorm = g_autoencoder.forward( g_dctFeatures[idx] );
+     std::vector<float>& featNorm = g_autoencoder.forward( g_dctFeatures[idx] );
 
     // 1) Un-normalise
     std::vector<float> feat(featNorm.size());
@@ -500,11 +500,11 @@ void reconstructSampleSDF(int idx)
         }
     g_sdfOriginal = sdf;
 
-    std::cout << "Reconstructed AE SDF for polygon[" << idx << "]\n";
+    std::cout << "Reructed AE SDF for polygon[" << idx << "]\n";
 }
 
 
-void reconstructFromTopKDCT(int idx)
+void reructFromTopKDCT(int idx)
 {
     if (g_polygons.empty()) return;
     idx = std::clamp(idx, 0, (int)g_polygons.size() - 1);
@@ -539,16 +539,16 @@ void reconstructFromTopKDCT(int idx)
     // 4) IDCT
     IDCT2(dctTrunc, g_sdfFromTopK);
 
-    std::cout << "Reconstructed SDF from low-freq block for polygon[" << idx << "]\n";
+    std::cout << "Reructed SDF from low-freq block for polygon[" << idx << "]\n";
 }
 
 
-void reconstructFromStoredFeatures(int idx)
+void reructFromStoredFeatures(int idx)
 {
     if (g_dctFeatures.empty()) return;
     idx = std::clamp(idx, 0, (int)g_dctFeatures.size() - 1);
 
-    const std::vector<float>& featNorm = g_dctFeatures[idx];
+     std::vector<float>& featNorm = g_dctFeatures[idx];
 
     // 1) Un-normalise
     std::vector<float> feat(featNorm.size());
@@ -582,7 +582,7 @@ void reconstructFromStoredFeatures(int idx)
         }
     g_sdfOriginal = sdf;
 
-    std::cout << "Reconstructed SDF from stored normalized features[" << idx << "]\n";
+    std::cout << "Reructed SDF from stored normalized features[" << idx << "]\n";
 }
 
 float trainSGD(MLP& net,
@@ -796,7 +796,7 @@ void setup()
     g_isTraining = false;
     g_lastLoss = 0.0f;
 
-    reconstructSampleSDF(g_currentIndex);
+    reructSampleSDF(g_currentIndex);
 }
 
 void update(int value)
@@ -858,7 +858,7 @@ void update(int value)
 //    restore3d();
 //}
 
-void drawSDF(const std::vector<std::vector<float>>& sdf,
+void drawSDF( std::vector<std::vector<float>>& sdf,
     float px, float py, float scale)
 {
     if (sdf.empty()) return;
@@ -927,12 +927,12 @@ void draw()
     // Visualize original vs reructed SDF of polygon[0]
     glColor3f(0, 0, 0);
         drawSDF(g_sdfOriginal, 20.0f, 20.0f, 1.5f);   // left
-        drawSDF(g_sdfFromTopK, 220.0f, 20.0f, 1.5f);   // g_sdfFromTopK is either reconstructed from stored dctFeatures (reconstructFromStoredFeatures)or recomputed (reconstructFromTopKDCT)
+        drawSDF(g_sdfFromTopK, 220.0f, 20.0f, 1.5f);   // g_sdfFromTopK is either reructed from stored dctFeatures (reructFromStoredFeatures)or recomputed (reructFromTopKDCT)
         drawSDF(g_sdfReructed, 420.0f, 20.0f, 1.5f);   // right
 
         // Text UI
         char s[250];
-        sprintf(s, "Left: original SDF[%i], Middle: g_sdfFromTopK,  Right: AE-PCA reconstructed", g_currentIndex);
+        sprintf(s, "Left: original SDF[%i], Middle: g_sdfFromTopK,  Right: AE-PCA reructed", g_currentIndex);
     setup2d();
 
         drawString(s, 20, 410);
@@ -949,13 +949,13 @@ void keyPress(unsigned char k, int xm, int ym)
     {
         generatePolygons();
         computeSDFandDCT();
-        reconstructSampleSDF(g_currentIndex);
+        reructSampleSDF(g_currentIndex);
     }
 
     if (k == 't')
     {
         g_isTraining = !g_isTraining;
-       // reconstructSampleSDF(g_currentIndex);
+       // reructSampleSDF(g_currentIndex);
     }
 
     if (k >= '0' && k <= '4')
@@ -965,9 +965,9 @@ void keyPress(unsigned char k, int xm, int ym)
         {
             g_currentIndex = idx;
 
-            reconstructSampleSDF(g_currentIndex);
-            // reconstructFromTopKDCT(g_currentIndex);
-            reconstructFromStoredFeatures(g_currentIndex);
+            reructSampleSDF(g_currentIndex);
+            // reructFromTopKDCT(g_currentIndex);
+            reructFromStoredFeatures(g_currentIndex);
 
             //
 

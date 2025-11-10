@@ -75,7 +75,7 @@ std::vector<int> topK_V;
 float sdfVoronoi(float x, float y)
 {
     // Number of sites
-    const int NUM_SITES = 64;
+     int NUM_SITES = 64;
 
     // Static random site positions
     static bool init = false;
@@ -257,9 +257,9 @@ void computeSDFandDCT()
 }
 
 // ---------------------------------------
-// Reconstruct field using only Top-K
+// Reruct field using only Top-K
 // ---------------------------------------
-void reconstructFromTopKDCT(float output[RES][RES])
+void reructFromTopKDCT(float output[RES][RES])
 {
     float dct_recon[RES][RES] = { 0 };
 
@@ -274,9 +274,9 @@ void reconstructFromTopKDCT(float output[RES][RES])
 }
 
 // ------------------------------------------------------------
-// Reconstruct field from lowest N x N DCT frequency block
+// Reruct field from lowest N x N DCT frequency block
 // ------------------------------------------------------------
-void reconstructFromLowFreqBlock(float input[RES][RES], float output[RES][RES], int N)
+void reructFromLowFreqBlock(float input[RES][RES], float output[RES][RES], int N)
 {
     // clamp N
     if (N > RES) N = RES;
@@ -293,7 +293,7 @@ void reconstructFromLowFreqBlock(float input[RES][RES], float output[RES][RES], 
         }
     }
 
-    // inverse DCT to reconstruct smooth field
+    // inverse DCT to reruct smooth field
     computeInverseDCT(dct_low, output);
 }
 
@@ -373,9 +373,9 @@ inline void drawDCTEnergyMap(float(&dctCoeffs)[RES][RES], float offsetX = 0)
 
 // ---------------------------------------
 bool recompute = false;
-bool showReconstruction = false;
-float reconstructed[RES][RES];
-float reconstructedLow[RES][RES];
+bool showReruction = false;
+float reructed[RES][RES];
+float reructedLow[RES][RES];
 
 // ---------------------------------------
 void setup()
@@ -397,7 +397,7 @@ void draw()
     backGround(0.8);
     drawGrid(50);
 
-    if (!showReconstruction)
+    if (!showReruction)
     {
         glColor3f(1, 1, 1);
         drawString("Original SDF Field", 10, 20);
@@ -407,16 +407,16 @@ void draw()
     }
     else
     {
-        reconstructFromTopKDCT(reconstructed);
-        drawString("Reconstructed from Top-K DCT", 10, 20);
+        reructFromTopKDCT(reructed);
+        drawString("Reructed from Top-K DCT", 10, 20);
 
-        normaliseDCT(reconstructed);
-        drawField(reconstructed, 0);
+        normaliseDCT(reructed);
+        drawField(reructed, 0);
 
        
-        reconstructFromLowFreqBlock(dctCoeffs, reconstructedLow, 32); // 8×8 low-frequency block
-        normaliseDCT(reconstructedLow);
-        drawField(reconstructedLow, 120);
+        reructFromLowFreqBlock(dctCoeffs, reructedLow, 32); // 8×8 low-frequency block
+        normaliseDCT(reructedLow);
+        drawField(reructedLow, 120);
 
     }
 
@@ -442,7 +442,7 @@ void keyPress(unsigned char k, int xm, int ym)
     }
     if (k == 'k')
     {
-        showReconstruction = !showReconstruction;
+        showReruction = !showReruction;
     }
 }
 
