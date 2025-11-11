@@ -27,14 +27,14 @@ using namespace zSpace;
 // ------------------------------------------------------------
 // Config
 // ------------------------------------------------------------
-#define RES 64
+#define RES 128
 #define NUM_SHAPES 5
 
 // Fixed low-frequency block size U x U
-#define BLOCK_U 30
+#define BLOCK_U 12
 #define TOP_K (BLOCK_U * BLOCK_U)
 
-#define LATENT_DIM 16
+#define LATENT_DIM 2
 
 #ifndef PI
 #define PI 3.14159265358979323846
@@ -59,84 +59,12 @@ inline Alice::vec zVecToAliceVec(zVector& in)
     return Alice::vec(in.x, in.y, in.z);
 }
 
-std::vector<std::vector<zVector>> readPolygonsFromInShapes(const std::string& path = "data/inShapes.json")
-{
-    std::ifstream file(path);
-    std::vector<std::vector<zVector>> polygons;
-    if (!file.is_open())
-    {
-        std::cerr << "Cannot open " << path << std::endl;
-        return polygons;
-    }
-
-    std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    file.close();
-
-    size_t pos = 0;
-    while ((pos = data.find("\"polys\"", pos)) != std::string::npos)
-    {
-        pos = data.find('[', pos); // move to first [
-        if (pos == std::string::npos) break;
-
-        int depth = 0;
-        std::string polyBlock;
-        for (size_t i = pos; i < data.size(); ++i)
-        {
-            char c = data[i];
-            if (c == '[') depth++;
-            if (c == ']') depth--;
-            polyBlock += c;
-            if (depth == 0)
-            {
-                pos = i;
-                break;
-            }
-        }
-
-        // --- Extract coordinates from polyBlock
-        std::vector<zVector> currentPoly;
-        std::string num;
-        float x = 0, y = 0, z = 0;
-        int count = 0;
-        for (size_t i = 0; i < polyBlock.size(); i++)
-        {
-            char c = polyBlock[i];
-            if (std::isdigit(c) || c == '-' || c == '.' || c == 'e' || c == 'E')
-            {
-                num += c;
-            }
-            else
-            {
-                if (!num.empty())
-                {
-                    float val = std::stof(num);
-                    num.clear();
-
-                    if (count == 0) x = val;
-                    else if (count == 1) y = val;
-                    else if (count == 2)
-                    {
-                        z = val;
-                        currentPoly.push_back(zVector(x, y, z));
-                        count = -1;
-                    }
-                    count++;
-                }
-            }
-        }
-
-        if (!currentPoly.empty())
-            polygons.push_back(currentPoly);
-    }
-
-    std::cout << "Parsed " << polygons.size() << " polygons from " << path << std::endl;
-    return polygons;
-}
-
 
 // ------------------------------------------------------------
 // Polygon + SDF helpers
 // ------------------------------------------------------------
+
+
 inline float clampFloat(float v, float vmin, float vmax)
 {
     return (v < vmin) ? vmin : (v > vmax) ? vmax : v;
@@ -451,12 +379,306 @@ inline void normaliseSDF(float field[RES][RES], double targetMin = -1.0, double 
 // ------------------------------------------------------------
 // Data structures
 // ------------------------------------------------------------
+//struct DCTSample
+//{
+//    std::vector<zVector> poly;
+//    float sdf[RES][RES];
+//    float dct[RES][RES];
+//};
+
 struct DCTSample
 {
-    std::vector<zVector> poly;
+    std::vector<std::vector<zVector>> polys;   // multiple polygons (outer + inner)
+    float zValue = 0.0f;                       // shared Z height
     float sdf[RES][RES];
     float dct[RES][RES];
 };
+
+
+std::vector<std::vector<zVector>> readPolygonsFromInShapes( const std::string& path = "data/inShapes.json")
+{
+    std::ifstream file(path);
+    std::vector<std::vector<zVector>> polygons;
+    if (!file.is_open())
+    {
+        std::cerr << "Cannot open " << path << std::endl;
+        return polygons;
+    }
+
+    std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    file.close();
+
+    size_t pos = 0;
+    while ((pos = data.find("\"polys\"", pos)) != std::string::npos)
+    {
+        pos = data.find('[', pos); // move to first [
+        if (pos == std::string::npos) break;
+
+        int depth = 0;
+        std::string polyBlock;
+        for (size_t i = pos; i < data.size(); ++i)
+        {
+            char c = data[i];
+            if (c == '[') depth++;
+            if (c == ']') depth--;
+            polyBlock += c;
+            if (depth == 0)
+            {
+                pos = i;
+                break;
+            }
+        }
+
+        // --- Extract coordinates from polyBlock
+        std::vector<zVector> currentPoly;
+        std::string num;
+        float x = 0, y = 0, z = 0;
+        int count = 0;
+        for (size_t i = 0; i < polyBlock.size(); i++)
+        {
+            char c = polyBlock[i];
+            if (std::isdigit(c) || c == '-' || c == '.' || c == 'e' || c == 'E')
+            {
+                num += c;
+            }
+            else
+            {
+                if (!num.empty())
+                {
+                    float val = std::stof(num);
+                    num.clear();
+
+                    if (count == 0) x = val;
+                    else if (count == 1) y = val;
+                    else if (count == 2)
+                    {
+                        z = val;
+                        currentPoly.push_back(zVector(x, y, z));
+                        count = -1;
+                    }
+                    count++;
+                }
+            }
+        }
+
+        if (!currentPoly.empty())
+            polygons.push_back(currentPoly);
+    }
+
+    std::cout << "Parsed " << polygons.size() << " polygons from " << path << std::endl;
+    return polygons;
+}
+
+struct PolyWithRole
+{
+    std::vector<zVector> pts;
+    bool isHole = false;
+};
+
+std::vector<PolyWithRole> classifyPolygons(std::vector<std::vector<zVector>>& polys)
+{
+    std::vector<PolyWithRole> result;
+    result.reserve(polys.size());
+
+    for (int i = 0; i < polys.size(); i++)
+    {
+        PolyWithRole entry;
+        entry.pts = polys[i];
+        entry.isHole = false;
+        result.push_back(entry);
+    }
+
+    // determine which polygons are holes
+    for (int i = 0; i < result.size(); i++)
+    {
+        // compute centroid of polygon i
+        zVector c(0, 0, 0);
+        for (auto& p : result[i].pts) c += p;
+        c /= (float)result[i].pts.size();
+
+        // check if centroid lies inside another polygon
+        for (int j = 0; j < result.size(); j++)
+        {
+            if (i == j) continue;
+            if (pointInPolygon(c, result[j].pts))
+            {
+                result[i].isHole = true;
+                break;
+            }
+        }
+    }
+
+    return result;
+}
+
+// Updated SDF computation respecting outer vs inner polygons
+float sdf_MultiPolygon(zVector& p, std::vector<std::vector<zVector>>& polys)
+{
+    auto classified = classifyPolygons(polys);
+
+    if (classified.empty()) return 1e6f;
+
+    float d = sdf_Polygon(p, classified[0].pts);
+
+    for (int i = 1; i < classified.size(); i++)
+    {
+        float di = sdf_Polygon(p, classified[i].pts);
+        if (classified[i].isHole)
+            d = std::max(d, -di);
+        else
+            d = std::min(d, di);
+    }
+
+    return d;
+}
+
+
+
+
+// ------------------------------------------------------------
+// Rescale polygons to fit within [-1,1] box (or any target box)
+// ------------------------------------------------------------
+void normalizePolygonsToBBox(std::vector<std::vector<zVector>>& polys,
+     zVector& targetMin = zVector(-1, -1, 0),
+     zVector& targetMax = zVector(1, 1, 0))
+{
+    if (polys.empty()) return;
+
+    zVector bmin(1e9, 1e9, 0);
+    zVector bmax(-1e9, -1e9, 0);
+
+    // find current bounding box (XY only)
+    for (auto& poly : polys)
+    {
+        for (auto& p : poly)
+        {
+            bmin.x = std::min(bmin.x, p.x);
+            bmin.y = std::min(bmin.y, p.y);
+            bmax.x = std::max(bmax.x, p.x);
+            bmax.y = std::max(bmax.y, p.y);
+        }
+    }
+
+    zVector srcSize = bmax - bmin;
+    if (srcSize.x < 1e-6f) srcSize.x = 1.0f;
+    if (srcSize.y < 1e-6f) srcSize.y = 1.0f;
+
+    zVector dstSize = targetMax - targetMin;
+    zVector scale(dstSize.x / srcSize.x, dstSize.y / srcSize.y, 1);
+
+    zVector srcCenter = (bmax + bmin) * 0.5;
+    zVector dstCenter = (targetMax + targetMin)  * 0.5;
+
+    // apply uniform scaling (keep aspect)
+    float uniformScale = std::min(scale.x, scale.y);
+
+    for (auto& poly : polys)
+    {
+        for (auto& p : poly)
+        {
+            // center + scale + flatten
+            p.x = dstCenter.x + (p.x - srcCenter.x) * uniformScale;
+            p.y = dstCenter.y + (p.y - srcCenter.y) * uniformScale;
+            p.z = 0.0f;
+        }
+    }
+}
+
+
+std::vector<DCTSample> groupPolygonsByZ(std::vector<std::vector<zVector>>& allPolygons)
+{
+    std::map<int, DCTSample> groups;
+    const float zTol = 1e-3f;
+    const float closeTol = 1e-6f;
+
+    // 1) Group input chains by (quantized) z
+    for (auto& poly : allPolygons)
+    {
+        if (poly.empty())
+        {
+            continue;
+        }
+
+        float z = poly[0].z;
+        int zKey = (int)std::round(z * 1000.0f);
+
+        DCTSample& sample = groups[zKey];
+        sample.zValue = z;
+
+        // 2) Split this chain into multiple closed loops
+        std::vector<zVector> currentLoop;
+        zVector firstPt;
+        bool haveFirst = false;
+
+        for (int i = 0; i < (int)poly.size(); i++)
+        {
+            zVector p = poly[i];
+            p.z = 0.0f; // flatten for 2D SDF
+
+            if (!haveFirst)
+            {
+                currentLoop.clear();
+                currentLoop.push_back(p);
+                firstPt = p;
+                haveFirst = true;
+            }
+            else
+            {
+                currentLoop.push_back(p);
+
+                // check if we closed the loop (back to first point)
+                if (currentLoop.size() > 2 && p.distanceTo(firstPt) < closeTol)
+                {
+                    // enforce exact closure
+                    currentLoop.back() = firstPt;
+
+                    // only keep non-degenerate loops
+                    if ((int)currentLoop.size() >= 4)
+                    {
+                        sample.polys.push_back(currentLoop);
+                    }
+
+                    haveFirst = false; // next point (if any) starts a new loop
+                }
+            }
+        }
+
+        // If last loop was not explicitly closed but has enough points, close it
+        if (haveFirst && currentLoop.size() >= 3)
+        {
+            if (currentLoop.back().distanceTo(firstPt) >= closeTol)
+            {
+                currentLoop.push_back(firstPt);
+            }
+
+            if ((int)currentLoop.size() >= 4)
+            {
+                sample.polys.push_back(currentLoop);
+            }
+        }
+    }
+
+    // 3) Normalize each z-layer and collect outputs
+    std::vector<DCTSample> out;
+    out.reserve(groups.size());
+
+    for (auto& kv : groups)
+    {
+        DCTSample sample = kv.second;
+
+        // normalize polygons of this layer into [-1,1]^2
+        normalizePolygonsToBBox(sample.polys, zVector(-1, -1, 0), zVector(1, 1, 0));
+
+        out.push_back(sample);
+
+        printf(" %d num polys per layer\n", (int)sample.polys.size());
+    }
+
+    printf("Grouped into %zu SDF layers based on z-values.\n", out.size());
+    return out;
+}
+
+// ------------------------------------------------------------
 
 std::vector<DCTSample> g_samples;
 
@@ -545,52 +767,36 @@ void drawSDF(float fld[RES][RES], float px, float py, float scale)
 // ------------------------------------------------------------
 // 1) Generate dataset: polygons + SDF + DCT
 // ------------------------------------------------------------
-void generateDataset()
+
+void generateDatasetFromInShapes( const std::string& jsonPath = "data/inShapes.json")
 {
     g_samples.clear();
-    g_samples.resize(NUM_SHAPES);
 
-    for (int s = 0; s < NUM_SHAPES; s++)
+    std::vector<std::vector<zVector>> allPolys = readPolygonsFromInShapes(jsonPath);
+    std::vector<DCTSample> grouped = groupPolygonsByZ(allPolys);
+
+    for (auto& sample : grouped)
     {
-        int nv = 5 + (rand() % 4);
-        g_samples[s].poly = randomPolygon(nv);
-
         for (int i = 0; i < RES; i++)
         {
             for (int j = 0; j < RES; j++)
             {
-                float x = (float)i / (RES - 1) * 2.0f - 1.0f;
-                float y = (float)j / (RES - 1) * 2.0f - 1.0f;
-                zVector p(x, y, 0);
+                float gx = (float)i / (RES - 1) * 2.0f - 1.0f;
+                float gy = (float)j / (RES - 1) * 2.0f - 1.0f;
+                zVector p(gx, gy, 0);
 
-                if (s == 0)
-                {
-                    g_samples[s].sdf[i][j] = sdf_Voronoi(x, y);
-                }
-                else
-                {
-                    if (s == 4)
-                    {
-                        setupConcentricCircles(centers, radii, 12, 0.9f, 0.0001f, 0.0002f);
-                        g_samples[s].sdf[i][j] = sdf_CirclesUnion(p);
-                    }
-                    else if(s == 3)
-                    {
-                        setupConcentricCircles(centers, radii, 3, 0.6f, 0.0001f, 0.0002f);
-                        g_samples[s].sdf[i][j] = sdf_CirclesUnion(p);
-                    }                       
-                    else
-                     g_samples[s].sdf[i][j] = sdf_Polygon(p, g_samples[s].poly);
-                }
+                sample.sdf[i][j] = sdf_MultiPolygon(p, sample.polys);
             }
         }
 
-        normaliseSDF(g_samples[s].sdf);
-        computeDCT(g_samples[s].sdf, g_samples[s].dct);
+        normaliseSDF(sample.sdf);
+        computeDCT(sample.sdf, sample.dct);
+        g_samples.push_back(sample);
     }
 
-    printf("Generated %d shapes.\n", NUM_SHAPES);
+    printf("Generated %zu SDF layers from %s.\n", g_samples.size(), jsonPath.c_str());
 }
+
 
 // ------------------------------------------------------------
 // 2) Define fixed U x U low-frequency layout
@@ -952,7 +1158,7 @@ void reconstruct_from_AE_output(int s, float out[RES][RES])
 // Helper: get latent activation layer index for symmetric AE
 // activations: [0]=input, [L]=output, middle = latent
 //--------------------------------------------------------------
-int getLatentActivationIndex(const MLP& net)
+int getLatentActivationIndex( MLP& net)
 {
     int L = (int)net.activations.size(); // activations filled after forward()
     if (L < 3)
@@ -1114,6 +1320,27 @@ void drawEnergySpectrum(float dct[RES][RES], int blockU, float px, float py, flo
 // ------------------------------------------------------------
 // Linear blend between two SDFs using their coefficients
 // ------------------------------------------------------------
+//void blendSDFs(
+//    float coeffsA[RES][RES],
+//    float coeffsB[RES][RES],
+//    float t,
+//    float outSDF[RES][RES]
+//)
+//{
+//    // interpolate coefficients
+//    float interp[RES][RES];
+//    for (int i = 0; i < RES; i++)
+//    {
+//        for (int j = 0; j < RES; j++)
+//        {
+//            interp[i][j] = (1.0f - t) * coeffsA[i][j] + t * coeffsB[i][j];
+//        }
+//    }
+//
+//    // decode back to image / field
+//    computeInverseDCT(interp, outSDF);
+//}
+
 void blendSDFs(
     float coeffsA[RES][RES],
     float coeffsB[RES][RES],
@@ -1121,19 +1348,23 @@ void blendSDFs(
     float outSDF[RES][RES]
 )
 {
-    // interpolate coefficients
-    float interp[RES][RES];
-    for (int i = 0; i < RES; i++)
+    // Start from all zeros
+    float interp[RES][RES] = { 0 };
+
+    // Blend ONLY the fixed TOP_K coefficients (e.g. UxU block)
+    int K = std::min(TOP_K, (int)g_fixedU.size());
+    for (int i = 0; i < K; i++)
     {
-        for (int j = 0; j < RES; j++)
-        {
-            interp[i][j] = (1.0f - t) * coeffsA[i][j] + t * coeffsB[i][j];
-        }
+        int u = g_fixedU[i];
+        int v = g_fixedV[i];
+
+        interp[u][v] = (1.0f - t) * coeffsA[u][v] + t * coeffsB[u][v];
     }
 
-    // decode back to image / field
+    // Decode back to spatial domain
     computeInverseDCT(interp, outSDF);
 }
+
 
 // ------------------------------------------------------------
 // visualisation
@@ -1144,19 +1375,22 @@ void visualizeInterpolatedSDFs(int idxA, int idxB, int numSteps = 5)
         idxA >= g_samples.size() || idxB >= g_samples.size())
         return;
 
-    float blended[RES][RES];
+    float blended_COEFFS[RES][RES];
 
     for (int s = 0; s <= numSteps; s++)
     {
         float t = (float)s / (float)numSteps;
 
         // linear blend of DCT coefficients
-        blendSDFs(g_samples[idxA].dct, g_samples[idxB].dct, t, blended);
+        blendSDFs(g_samples[idxA].dct, g_samples[idxB].dct, t, blended_COEFFS);
 
         // visualize
         float offsetX = (s - numSteps / 2.0f) * (RES + 10);
-        drawSDF(blended, offsetX, -float(RES) * 0.5f - RES - 20, 1.0f);
+        drawSDF(blended_COEFFS, offsetX * 0.5, -float(RES) * 0.5f - RES - 20, 0.5f);
     }
+
+    glColor3f(0, 0, 0);
+    drawString("interpolated coefficients ", -float(RES) * 0.5f, -float(RES) * 0.5f - RES - 20 - 10);
 }
 
 //--------------------------------------------------------------
@@ -1168,7 +1402,7 @@ void visualizeInterpolatedSDFValues(int idxA, int idxB, int numSteps = 5)
     if (idxA < 0 || idxB < 0) return;
     if (idxA >= g_samples.size() || idxB >= g_samples.size()) return;
 
-    float blended[RES][RES];
+    float interp_pixels[RES][RES];
 
     // Loop through interpolation steps
     for (int s = 0; s <= numSteps; s++)
@@ -1182,26 +1416,19 @@ void visualizeInterpolatedSDFValues(int idxA, int idxB, int numSteps = 5)
             {
                 float a = g_samples[idxA].sdf[i][j];
                 float b = g_samples[idxB].sdf[i][j];
-                blended[i][j] = (1.0f - t) * a + t * b;
+                interp_pixels[i][j] = (1.0f - t) * a + t * b;
             }
         }
 
         // --- 2) Visualize interpolated SDF directly ---
         float offsetX = (s - numSteps / 2.0f) * (RES + 10);
         float offsetY = -float(RES) * 0.5f - RES * 4.0f - 40.0f;
-        drawSDF(blended, offsetX, offsetY, 1.0f);
+        drawSDF(interp_pixels, offsetX * 0.5, offsetY, 0.5f);
     }
+
+    glColor3f(0, 0, 0);
+    drawString("interpolated pixels ", -float(RES) * 0.5f, -float(RES) * 0.5f - RES * 4.0f - 40.0f -10);
 }
-
-
-//--------------------------------------------------------------
-// Latent-space interpolation between two shapes' DCT coeffs
-// idxA, idxB : indices into g_trainX / g_samples
-// numSteps   : number of intermediate frames (inclusive endpoints)
-//--------------------------------------------------------------
-//--------------------------------------------------------------
-// Latent-space interpolation using new AutoEncoder
-//--------------------------------------------------------------
 
 
 //--------------------------------------------------------------
@@ -1222,7 +1449,7 @@ void visualizeLatentInterpolatedSDFs_MLP(int idxA, int idxB, int numSteps = 8)
     std::vector<float> zB = encodeToLatent(g_autoencoder, g_trainX[idxB]);
     if (zA.empty() || zB.empty() || zA.size() != zB.size()) return;
 
-    float sdf[RES][RES];
+    float latent_SDF[RES][RES];
 
     for (int s = 0; s <= numSteps; s++)
     {
@@ -1258,13 +1485,14 @@ void visualizeLatentInterpolatedSDFs_MLP(int idxA, int idxB, int numSteps = 8)
         }
 
         // 5) inverse DCT → SDF
-        computeInverseDCT(dctTmp, sdf);
+        computeInverseDCT(dctTmp, latent_SDF);
 
         // 6) draw
         float offsetX = (s - numSteps * 0.5f) * (RES + 10);
-        float offsetY = -float(RES) * 3.5f;
-        drawSDF(sdf, offsetX, offsetY, 1.0f);
+        float offsetY = -float(RES) * 2.75f;
+        drawSDF(latent_SDF, offsetX * 0.5, offsetY, 0.5f);
     }
+    drawString("interpolated latent vectors ", -float(RES) * 0.5f, -float(RES) * 2.75f - 10);
 }
 
 
@@ -1273,7 +1501,9 @@ void visualizeLatentInterpolatedSDFs_MLP(int idxA, int idxB, int numSteps = 8)
 // ------------------------------------------------------------
 void rebuildAll()
 {
-    generateDataset();
+   // generateDataset();
+    generateDatasetFromInShapes("data/inShapes.json");
+
     computeFixedBlockLayout();
     buildFixedLayoutFeatures();
     buildTrainingData();
@@ -1281,7 +1511,7 @@ void rebuildAll()
     g_autoencoder.initialize
     (
         TOP_K,
-        { LATENT_DIM},
+        { 64, 16, LATENT_DIM, 16, 64},
         TOP_K
     );
 
@@ -1314,7 +1544,7 @@ void update(int value)
     {
        // g_lastLoss = trainSGD(g_autoencoder, g_trainX, 20, 0.1f, 5);
 
-        g_lastLoss = trainSGD(g_autoencoder, g_trainX, g_trainX, 20, 0.1f, 5);
+        g_lastLoss = trainSGD(g_autoencoder, g_trainX, g_trainX, 20, 0.01f, 5);
         /*for (int e = 0; e < 20; e++)
         {
             for (auto& x : g_trainX)
@@ -1325,7 +1555,7 @@ void update(int value)
     }
     else
     {
-       // g_lastLoss = trainAdam(g_autoencoder, g_trainX, g_trainX, 20, 1e-3f, 0.9f, 0.999f, 1e-8f, 5);
+       g_lastLoss = trainAdam(g_autoencoder, g_trainX, g_trainX, 20, 1e-3f, 0.9f, 0.999f, 1e-8f, 5);
     }
 
     reconstruct_from_fixed_block_truth(g_currentShape, g_reconFixed);
@@ -1335,42 +1565,31 @@ void update(int value)
 void draw()
 {
     backGround(0.9f);
-    drawGrid(100);
+    drawGrid(RES*0.5);
 
-    //
-
-    for (int i = 0; i < g_polygons.size(); i++)
-    {
-        const auto& poly = g_polygons[i];
-        if (poly.empty()) continue;
-
-        // Slight z offset per polygon for clarity
-        float zOffset = 0.1f * i;
-
-        glBegin(GL_LINE_LOOP);
-        for (auto& p : poly)
-        {
-            glVertex3f(p.x, p.y, p.z + zOffset);
-        }
-        glEnd();
-
-        // Optional: draw polygon index at centroid
-        zVector centroid(0, 0, 0);
-        for (auto& p : poly) centroid += p;
-        centroid /= (float)poly.size();
-
-        drawTextAtVec(to_string(i), zVecToAliceVec(centroid));
-    }
     //
 
     glColor3f(0, 0, 0);
-    std::vector<zVector>& poly = g_samples[g_currentShape].poly;
-    int n = (int)poly.size();
-    for (int i = 0; i < n; i++)
+
+    if (!g_samples.empty() && g_currentShape >= 0 && g_currentShape < (int)g_samples.size())
     {
-        int j = (i + 1) % n;
-        drawLine(zVecToAliceVec(poly[i]), zVecToAliceVec(poly[j]));
+        DCTSample& sample = g_samples[g_currentShape];
+
+        // draw all polygons (outer + islands) for this SDF layer
+        for (int pId = 0; pId < (int)sample.polys.size(); pId++)
+        {
+            std::vector<zVector>& poly = sample.polys[pId];
+            if (poly.size() < 2) continue;
+
+            int n = (int)poly.size();
+            for (int i = 0; i < n; i++)
+            {
+                int j = (i + 1) % n;
+                drawLine(zVecToAliceVec(poly[i] * RES*0.5), zVecToAliceVec(poly[j] * RES*0.5));
+            }
+        }
     }
+
 
     drawSDF(g_samples[g_currentShape].sdf, -(float)(RES * 2 + 10), -float(RES * 0.5f), 1.0f);
     drawSDF(g_reconFixed, -(float)(RES * 0.5f), -float(RES * 0.5f), 1.0f);
@@ -1403,9 +1622,9 @@ void draw()
 
     restore3d();
 
-    visualizeInterpolatedSDFs(2,4, 8);
-    visualizeLatentInterpolatedSDFs_MLP (2, 4, 8);
-    visualizeInterpolatedSDFValues(2, 4, 8);
+    visualizeInterpolatedSDFs(1,4, 12);
+    visualizeLatentInterpolatedSDFs_MLP (1, 4, 12);
+    visualizeInterpolatedSDFValues(1, 4, 12);
 }
 
 void keyPress(unsigned char k, int xm, int ym)
