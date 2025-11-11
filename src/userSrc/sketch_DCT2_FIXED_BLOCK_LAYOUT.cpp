@@ -1,4 +1,4 @@
-#define _MAIN_
+﻿#define _MAIN_
 #ifdef _MAIN_
 
 #include "main.h"
@@ -20,10 +20,18 @@ using namespace zSpace;
 // ------------------------------------------------------------
 // Config
 // ------------------------------------------------------------
-#define RES 64
+#define RES 128
 #define NUM_SHAPES 5
-#define TOP_K 1024              // number of fixed-layout DCT coeffs
-#define LATENT_DIM 16          // bottleneck dimension for AE : 
+
+// Fixed low-frequency block size U x U
+#define BLOCK_U 30
+#define TOP_K (BLOCK_U * BLOCK_U)
+
+#define LATENT_DIM 16
+
+#ifndef PI
+#define PI 3.14159265358979323846
+#endif
 
 // ------------------------------------------------------------
 // Jet colormap
@@ -113,16 +121,14 @@ float sdf_Polygon(zVector& p, std::vector<zVector>& poly)
 
 float sdf_Voronoi(float x, float y)
 {
-    // Number of sites
     int NUM_SITES = 64;
 
-    // Static random site positions
     static bool init = false;
     static std::vector<zVector> sites;
 
     if (!init)
     {
-        srand(42); // fixed seed for reproducibility
+        srand(42);
         for (int i = 0; i < NUM_SITES; i++)
         {
             float sx = -1.0f + 2.0f * ((float)rand() / RAND_MAX);
@@ -132,7 +138,6 @@ float sdf_Voronoi(float x, float y)
         init = true;
     }
 
-    // Find nearest and second nearest site
     float d1 = 1e9f, d2 = 1e9f;
     for (int i = 0; i < NUM_SITES; i++)
     {
@@ -150,13 +155,7 @@ float sdf_Voronoi(float x, float y)
         }
     }
 
-    // SDF value: distance to nearest cell ridge
-    // (ridge halfway between two closest sites)
     float sdf = 0.5f * (d2 - d1);
-
-    // Optional: make ridges visible with a threshold
-    // sdf = fabs(sdf) - 0.02f; // uncomment for thin ridge lines
-
     return sdf;
 }
 
@@ -182,11 +181,9 @@ std::vector<zVector> randomPolygon(int n, float radiusMin = 0.3f, float radiusMa
     return poly;
 }
 
-
 // ------------------------------------------------------------
-// DCT AND iDCT
+// Fast separable DCT / iDCT (orthonormal)
 // ------------------------------------------------------------
-
 void computeDCT(float in[RES][RES], float out[RES][RES])
 {
     static float cosTable[RES][RES];
@@ -204,13 +201,14 @@ void computeDCT(float in[RES][RES], float out[RES][RES])
         init = true;
     }
 
-    // --- 1D DCT on rows ---
     float temp[RES][RES];
+
+    // 1D DCT on rows
     for (int y = 0; y < RES; y++)
     {
         for (int u = 0; u < RES; u++)
         {
-            float Cu = (u == 0) ? (1.0f / sqrt(2.0f)) : 1.0f;
+            float Cu = (u == 0) ? 1.0f / sqrt(2.0f) : 1.0f;
             float sum = 0.0f;
             for (int x = 0; x < RES; x++)
             {
@@ -220,12 +218,12 @@ void computeDCT(float in[RES][RES], float out[RES][RES])
         }
     }
 
-    // --- 1D DCT on columns ---
+    // 1D DCT on columns
     for (int u = 0; u < RES; u++)
     {
         for (int v = 0; v < RES; v++)
         {
-            float Cv = (v == 0) ? (1.0f / sqrt(2.0f)) : 1.0f;
+            float Cv = (v == 0) ? 1.0f / sqrt(2.0f) : 1.0f;
             float sum = 0.0f;
             for (int y = 0; y < RES; y++)
             {
@@ -253,8 +251,9 @@ void computeInverseDCT(float in[RES][RES], float out[RES][RES])
         init = true;
     }
 
-    // --- 1D inverse DCT on rows ---
     float temp[RES][RES];
+
+    // 1D inverse DCT on rows
     for (int x = 0; x < RES; x++)
     {
         for (int n = 0; n < RES; n++)
@@ -269,7 +268,7 @@ void computeInverseDCT(float in[RES][RES], float out[RES][RES])
         }
     }
 
-    // --- 1D inverse DCT on columns ---
+    // 1D inverse DCT on columns
     for (int y = 0; y < RES; y++)
     {
         for (int x = 0; x < RES; x++)
@@ -285,6 +284,11 @@ void computeInverseDCT(float in[RES][RES], float out[RES][RES])
     }
 }
 
+//
+
+
+
+///
 
 // ------------------------------------------------------------
 // Data structures
@@ -294,31 +298,21 @@ struct DCTSample
     std::vector<zVector> poly;
     float sdf[RES][RES];
     float dct[RES][RES];
-
-    // shape-specific top-K (by magnitude)
-    std::vector<int> topU;
-    std::vector<int> topV;
-    std::vector<float> topValues;
 };
 
-// Global dataset
 std::vector<DCTSample> g_samples;
 
-// Fixed layout from global distribution
+// For fixed U x U block
 std::vector<int> g_fixedU;
 std::vector<int> g_fixedV;
 
-// Fixed-layout features: [NUM_SHAPES][TOP_K]
+// Features: NUM_SHAPES x TOP_K (fixed block coeffs)
 std::vector<std::vector<float>> g_fixedFeatures;
 
-// Normalisation for AE training
-float g_featMean = 0.0f;
-float g_featStd = 1.0f;
-// Feature-wise normalization parameters
+// Per-feature normalization
 std::vector<float> g_featMeanVec;
 std::vector<float> g_featStdVec;
-
-std::vector<std::vector<float>> g_trainX; // normalised features
+std::vector<std::vector<float>> g_trainX;
 
 // AE + training
 #include "genericMLP.h"
@@ -329,19 +323,63 @@ float g_lastLoss = 0.0f;
 
 enum TrainMode
 {
-    TRAIN_SGD = 1,
-    TRAIN_ADAM = 0
+    TRAIN_ADAM = 0,
+    TRAIN_SGD = 1
 };
 
 TrainMode g_trainMode = TRAIN_SGD;
 
-// Current selection & viz fields
+// Current selection & viz
 int g_currentShape = 0;
 float g_reconFixed[RES][RES];
 float g_reconAE[RES][RES];
 
+// Encoder–decoder wrapper
+class AutoEncoder : public MLP
+{
+public:
+    MLP encoder, decoder;
+
+    void initializeAE(int inDim, int bottleneckDim, int hidden = 64)
+    {
+        encoder.initialize(inDim, { hidden }, bottleneckDim);
+        decoder.initialize(bottleneckDim, { hidden }, inDim);
+    }
+
+    std::vector<float> encode(std::vector<float>& x) { return encoder.forward(x); }
+    std::vector<float> decode(std::vector<float>& z) { return decoder.forward(z); }
+
+    void train(std::vector<std::vector<float>>& data, int epochs = 500, float lr = 0.01f)
+    {
+        for (int e = 0; e < epochs; e++)
+        {
+            float totalLoss = 0;
+            for (auto& x : data)
+            {
+                auto z = encoder.forward(x);
+                auto x_hat = decoder.forward(z);
+
+                std::vector<float> gradOut(x.size());
+                for (int i = 0; i < x.size(); i++)
+                {
+                    float diff = x_hat[i] - x[i];
+                    gradOut[i] = 2 * diff;
+                    totalLoss += diff * diff;
+                }
+
+                decoder.backward(gradOut, lr);
+
+                std::vector<float> gradZ = gradOut;
+                encoder.backward(gradZ, lr);
+            }
+            if (e % 50 == 0) printf("epoch %d  loss %.4f\n", e, totalLoss / data.size());
+        }
+    }
+
+};
+
 // ------------------------------------------------------------
-// Utility: draw SDF field
+// Draw SDF
 // ------------------------------------------------------------
 void drawSDF(float fld[RES][RES], float px, float py, float scale)
 {
@@ -362,16 +400,14 @@ void drawSDF(float fld[RES][RES], float px, float py, float scale)
     float range = 0.5f * (vmax - vmin);
     if (range < 1e-6f) range = 1.0f;
 
-    //setup2d();
-
     glPointSize(2.0f);
     glBegin(GL_POINTS);
 
-    for (int i = 0; i < RES; i += 1)
+    for (int i = 0; i < RES; i++)
     {
-        for (int j = 0; j < RES; j += 1)
+        for (int j = 0; j < RES; j++)
         {
-            float nval = (fld[i][j] - mid) / range; // [-1,1]
+            float nval = (fld[i][j] - mid) / range;
             float r, g, b;
             getJetColor(nval, r, g, b);
             glColor3f(r, g, b);
@@ -383,11 +419,10 @@ void drawSDF(float fld[RES][RES], float px, float py, float scale)
     }
 
     glEnd();
-    // restore3d();
 }
 
 // ------------------------------------------------------------
-// 1) Generate 5 polygons + SDF + DCT + per-shape Top-K
+// 1) Generate dataset: polygons + SDF + DCT
 // ------------------------------------------------------------
 void generateDataset()
 {
@@ -396,11 +431,9 @@ void generateDataset()
 
     for (int s = 0; s < NUM_SHAPES; s++)
     {
-        // polygon in [-0.8,0.8]^2
         int nv = 5 + (rand() % 4);
         g_samples[s].poly = randomPolygon(nv);
 
-        // SDF on [-1,1]^2
         for (int i = 0; i < RES; i++)
         {
             for (int j = 0; j < RES; j++)
@@ -408,95 +441,48 @@ void generateDataset()
                 float x = (float)i / (RES - 1) * 2.0f - 1.0f;
                 float y = (float)j / (RES - 1) * 2.0f - 1.0f;
                 zVector p(x, y, 0);
-                g_samples[s].sdf[i][j] = (s == 0) ? sdf_Voronoi(x, y) : sdf_Polygon(p, g_samples[s].poly);
+
+                if (s == 0)
+                {
+                    g_samples[s].sdf[i][j] = sdf_Voronoi(x, y);
+                }
+                else
+                {
+                    g_samples[s].sdf[i][j] = sdf_Polygon(p, g_samples[s].poly);
+                }
             }
         }
 
-        // DCT
         computeDCT(g_samples[s].sdf, g_samples[s].dct);
-
-        // Per-shape Top-K by magnitude
-        std::vector<std::tuple<float, int, int>> coeffs;
-        coeffs.reserve(RES * RES);
-        for (int u = 0; u < RES; u++)
-        {
-            for (int v = 0; v < RES; v++)
-            {
-                coeffs.push_back(std::make_tuple(std::fabs(g_samples[s].dct[u][v]), u, v));
-            }
-        }
-
-        std::sort(coeffs.begin(), coeffs.end(),
-            [](auto& a, auto& b)
-            {
-                return std::get<0>(a) > std::get<0>(b);
-            });
-
-        int K = std::min(TOP_K, (int)coeffs.size());
-        g_samples[s].topU.resize(K);
-        g_samples[s].topV.resize(K);
-        g_samples[s].topValues.resize(K);
-
-        for (int k = 0; k < K; k++)
-        {
-            float mag = std::get<0>(coeffs[k]);
-            int u = std::get<1>(coeffs[k]);
-            int v = std::get<2>(coeffs[k]);
-            g_samples[s].topU[k] = u;
-            g_samples[s].topV[k] = v;
-            g_samples[s].topValues[k] = g_samples[s].dct[u][v]; // signed
-        }
     }
 
-    printf("Generated %d shapes with per-shape Top-%d DCT.\n", NUM_SHAPES, TOP_K);
+    printf("Generated %d shapes.\n", NUM_SHAPES);
 }
 
 // ------------------------------------------------------------
-// 2) Compute global fixed U,V from Top-K distributions
+// 2) Define fixed U x U low-frequency layout
 // ------------------------------------------------------------
-void computeFixedLayout()
+void computeFixedBlockLayout()
 {
-    std::map<std::pair<int, int>, float> energySum;
-
-    for (auto& s : g_samples)
-    {
-        int K = (int)s.topU.size();
-        for (int k = 0; k < K; k++)
-        {
-            std::pair<int, int> key(s.topU[k], s.topV[k]);
-            energySum[key] += std::fabs(s.topValues[k]);
-        }
-    }
-
-    std::vector<std::pair<std::pair<int, int>, float>> ranked;
-    ranked.reserve(energySum.size());
-
-    for (auto& kv : energySum)
-    {
-        ranked.push_back(kv);
-    }
-
-    std::sort(ranked.begin(), ranked.end(),
-        [](auto& a, auto& b)
-        {
-            return a.second > b.second;
-        });
-
     g_fixedU.clear();
     g_fixedV.clear();
+    g_fixedU.reserve(TOP_K);
+    g_fixedV.reserve(TOP_K);
 
-    int K = std::min(TOP_K, (int)ranked.size());
-    for (int i = 0; i < K; i++)
+    for (int u = 0; u < BLOCK_U; u++)
     {
-        g_fixedU.push_back(ranked[i].first.first);
-        g_fixedV.push_back(ranked[i].first.second);
+        for (int v = 0; v < BLOCK_U; v++)
+        {
+            g_fixedU.push_back(u);
+            g_fixedV.push_back(v);
+        }
     }
 
-    printf("Computed fixed layout with %d modes.\n", (int)g_fixedU.size());
+    printf("Fixed block layout: %d x %d = %d coeffs.\n", BLOCK_U, BLOCK_U, TOP_K);
 }
 
 // ------------------------------------------------------------
-// 3) Build per-shape fixed-layout feature vectors
+// 3) Build fixed-layout features from DCT (direct block sample)
 // ------------------------------------------------------------
 void buildFixedLayoutFeatures()
 {
@@ -505,84 +491,24 @@ void buildFixedLayoutFeatures()
 
     for (int s = 0; s < NUM_SHAPES; s++)
     {
-        // map per-shape (u,v)->value for quick lookup
-        std::map<std::pair<int, int>, float> local;
-        int K = (int)g_samples[s].topU.size();
-
-        for (int k = 0; k < K; k++)
-        {
-            local[std::make_pair(g_samples[s].topU[k], g_samples[s].topV[k])] =
-                g_samples[s].topValues[k];
-        }
-
         std::vector<float> feat(TOP_K, 0.0f);
+
         for (int i = 0; i < TOP_K; i++)
         {
             int u = g_fixedU[i];
             int v = g_fixedV[i];
-            auto it = local.find(std::make_pair(u, v));
-            if (it != local.end())
-            {
-                feat[i] = it->second;
-            }
-            else
-            {
-                feat[i] = 0.0f;
-            }
+            feat[i] = g_samples[s].dct[u][v];
         }
 
         g_fixedFeatures[s] = feat;
     }
 
-    printf("Built fixed-layout feature vectors.\n");
+    printf("Built fixed UxU block feature vectors.\n");
 }
 
 // ------------------------------------------------------------
-// 4) Global normalization for AE
+// 4) Per-feature normalization for AE
 // ------------------------------------------------------------
-//void buildTrainingData()
-//{
-//    double sum = 0.0;
-//    double sumSq = 0.0;
-//    size_t count = 0;
-//
-//    for (auto& f : g_fixedFeatures)
-//    {
-//        for (float v : f)
-//        {
-//            sum += v;
-//            sumSq += (double)v * (double)v;
-//            count++;
-//        }
-//    }
-//
-//    if (count > 0)
-//    {
-//        g_featMean = (float)(sum / count);
-//        double var = (sumSq / count) - (double)g_featMean * (double)g_featMean;
-//        g_featStd = (var > 1e-12) ? (float)std::sqrt(var) : 1.0f;
-//    }
-//    else
-//    {
-//        g_featMean = 0.0f;
-//        g_featStd = 1.0f;
-//    }
-//
-//    g_trainX.clear();
-//    g_trainX.resize(NUM_SHAPES);
-//
-//    for (int s = 0; s < NUM_SHAPES; s++)
-//    {
-//        g_trainX[s].resize(TOP_K);
-//        for (int i = 0; i < TOP_K; i++)
-//        {
-//            g_trainX[s][i] = (g_fixedFeatures[s][i] - g_featMean) / g_featStd;
-//        }
-//    }
-//
-//    printf("Normalised features: mean=%.6f std=%.6f\n", g_featMean, g_featStd);
-//}
-
 void buildTrainingData()
 {
     int N = (int)g_fixedFeatures.size();
@@ -592,7 +518,6 @@ void buildTrainingData()
     g_featMeanVec.assign(K, 0.0f);
     g_featStdVec.assign(K, 1.0f);
 
-    // --- Compute mean per feature ---
     for (int i = 0; i < K; i++)
     {
         double sum = 0.0;
@@ -603,21 +528,19 @@ void buildTrainingData()
         g_featMeanVec[i] = (float)(sum / N);
     }
 
-    // --- Compute std per feature ---
     for (int i = 0; i < K; i++)
     {
         double sumSq = 0.0;
         for (int s = 0; s < N; s++)
         {
             float d = g_fixedFeatures[s][i] - g_featMeanVec[i];
-            sumSq += (double)d * (double)d;
+            sumSq += d * d;
         }
         float stdv = (float)std::sqrt(sumSq / N);
         if (stdv < 1e-6f) stdv = 1.0f;
         g_featStdVec[i] = stdv;
     }
 
-    // --- Normalize dataset ---
     g_trainX.clear();
     g_trainX.resize(N);
 
@@ -630,12 +553,11 @@ void buildTrainingData()
         }
     }
 
-    printf("Per-feature normalization applied (K=%d, N=%d)\n", K, N);
+    printf("Per-feature normalization applied: N=%d, K=%d\n", N, K);
 }
 
-
 // ------------------------------------------------------------
-// 5) AE training: SGD and Adam 
+// 5) AE training: SGD and Adam (same interfaces, identity target)
 // ------------------------------------------------------------
 float trainSGD(MLP& net,
     std::vector<std::vector<float>>& X,
@@ -678,38 +600,81 @@ float trainSGD(MLP& net,
     return totalLoss;
 }
 
+//float trainSGD(MLP& net,
+//    std::vector<std::vector<float>>& X,
+//    std::vector<std::vector<float>>& Y,
+//    int epochs,
+//    float lr,
+//    int batchSize)
+//{
+//    if (X.empty()) return 0.0f;
+//
+//    int inputDim = (int)X[0].size();
+//    int latentDim = std::min(LATENT_DIM, inputDim);
+//    int hiddenDim = 0;
+//
+//    static AutoEncoder pcaAE;
+//    pcaAE.initializeAE(inputDim, latentDim, hiddenDim);
+//
+//    printf("Reducing dimensionality from %d → %d using AutoEncoder (PCA mode)\n",
+//        inputDim, latentDim);
+//
+//    // Train the AE to reconstruct X (identity mapping)
+//    pcaAE.train(X, epochs, lr);
+//
+//    // Get latent representation and reconstruction error
+//    float totalLoss = 0.0f;
+//    for (int i = 0; i < X.size(); i++)
+//    {
+//        std::vector<float> z = pcaAE.encode(X[i]);
+//        std::vector<float> x_recon = pcaAE.decode(z);
+//
+//        // Mean squared reconstruction error
+//        float mse = 0.0f;
+//        for (int j = 0; j < X[i].size(); j++)
+//        {
+//            float diff = x_recon[j] - X[i][j];
+//            mse += diff * diff;
+//        }
+//        mse /= (float)X[i].size();
+//        totalLoss += mse;
+//    }
+//
+//    totalLoss /= (float)X.size();
+//    printf("[PCA] Reconstruction Loss: %.6f\n", totalLoss);
+//
+//    // Optionally replace your existing MLP weights with the trained AE (for later reconstruction)
+//    net = pcaAE.encoder;
+//
+//    return totalLoss;
+//}
+//
+
 float trainAdam(MLP& net,
     std::vector<std::vector<float>>& X,
     std::vector<std::vector<float>>& Y,
-    int epochs = 200,
-    float lr = 1e-3f,
-    float beta1 = 0.9f,
-    float beta2 = 0.999f,
-    float eps = 1e-8f,
-    int batchSize = 4)
+    int epochs,
+    float lr,
+    float beta1,
+    float beta2,
+    float eps,
+    int batchSize)
 {
-    // Adam states shaped like W,b
     std::vector<std::vector<std::vector<float>>> mW = net.W;
     std::vector<std::vector<std::vector<float>>> vW = net.W;
     std::vector<std::vector<float>> mB = net.b;
     std::vector<std::vector<float>> vB = net.b;
 
-    for (auto& L : mW)
+    for (int l = 0; l < (int)mW.size(); l++)
     {
-        for (auto& r : L)
+        for (int i = 0; i < (int)mW[l].size(); i++)
         {
-            std::fill(r.begin(), r.end(), 0.0f);
+            std::fill(mW[l][i].begin(), mW[l][i].end(), 0.0f);
+            std::fill(vW[l][i].begin(), vW[l][i].end(), 0.0f);
         }
+        std::fill(mB[l].begin(), mB[l].end(), 0.0f);
+        std::fill(vB[l].begin(), vB[l].end(), 0.0f);
     }
-    for (auto& L : vW)
-    {
-        for (auto& r : L)
-        {
-            std::fill(r.begin(), r.end(), 0.0f);
-        }
-    }
-    for (auto& b : mB) std::fill(b.begin(), b.end(), 0.0f);
-    for (auto& b : vB) std::fill(b.begin(), b.end(), 0.0f);
 
     std::vector<int> indices(X.size());
     std::iota(indices.begin(), indices.end(), 0);
@@ -732,34 +697,27 @@ float trainAdam(MLP& net,
                 int idx = indices[ii];
                 t++;
 
-                // Forward
                 std::vector<float> y_pred = net.forward(X[idx]);
                 float loss = net.computeLoss(y_pred, Y[idx]);
                 totalLoss += loss;
 
-                // dL/dy for MSE
                 std::vector<float> gradOut(y_pred.size());
                 for (int j = 0; j < (int)y_pred.size(); j++)
                 {
-                    gradOut[j] = (y_pred[j] - Y[idx][j]);// / (float)y_pred.size();
+                    gradOut[j] = (y_pred[j] - Y[idx][j]);
                 }
 
-                // Allocate grads
                 std::vector<std::vector<std::vector<float>>> gradW = net.W;
                 std::vector<std::vector<float>> gradB = net.b;
-                for (auto& L : gradW)
+                for (int l = 0; l < (int)gradW.size(); l++)
                 {
-                    for (auto& r : L)
+                    for (int iN = 0; iN < (int)gradW[l].size(); iN++)
                     {
-                        std::fill(r.begin(), r.end(), 0.0f);
+                        std::fill(gradW[l][iN].begin(), gradW[l][iN].end(), 0.0f);
                     }
-                }
-                for (auto& bL : gradB)
-                {
-                    std::fill(bL.begin(), bL.end(), 0.0f);
+                    std::fill(gradB[l].begin(), gradB[l].end(), 0.0f);
                 }
 
-                // Backprop deltas
                 std::vector<std::vector<float>> deltas(net.W.size());
                 deltas.back() = gradOut;
 
@@ -790,13 +748,12 @@ float trainAdam(MLP& net,
                                 sum += delta[iN] * net.W[l][iN][jIn];
                             }
                             float a = net.activations[l][jIn];
-                            prevDelta[jIn] = sum * (1.0f - a * a); // tanh'
+                            prevDelta[jIn] = sum * (1.0f - a * a);
                         }
                         deltas[l - 1] = prevDelta;
                     }
                 }
 
-                // Adam update
                 for (int l = 0; l < (int)net.W.size(); l++)
                 {
                     for (int iN = 0; iN < (int)net.W[l].size(); iN++)
@@ -804,27 +761,25 @@ float trainAdam(MLP& net,
                         for (int jIn = 0; jIn < (int)net.W[l][iN].size(); jIn++)
                         {
                             float g = gradW[l][iN][jIn];
-                            //g = std::clamp(g, -10.0f, 10.0f); // optional
 
                             mW[l][iN][jIn] = beta1 * mW[l][iN][jIn] + (1.0f - beta1) * g;
                             vW[l][iN][jIn] = beta2 * vW[l][iN][jIn] + (1.0f - beta2) * g * g;
 
-                            float m_hat = mW[l][iN][jIn] / (1.0f - std::pow(beta1, t));
-                            float v_hat = vW[l][iN][jIn] / (1.0f - std::pow(beta2, t));
+                            float m_hat = mW[l][iN][jIn] / (1.0f - pow(beta1, t));
+                            float v_hat = vW[l][iN][jIn] / (1.0f - pow(beta2, t));
 
-                            net.W[l][iN][jIn] -= lr * m_hat / (std::sqrt(v_hat) + eps);
+                            net.W[l][iN][jIn] -= lr * m_hat / (sqrt(v_hat) + eps);
                         }
 
                         float gb = gradB[l][iN];
-                        gb = std::clamp(gb, -1.0f, 1.0f);
 
                         mB[l][iN] = beta1 * mB[l][iN] + (1.0f - beta1) * gb;
                         vB[l][iN] = beta2 * vB[l][iN] + (1.0f - beta2) * gb * gb;
 
-                        float m_hatb = mB[l][iN] / (1.0f - std::pow(beta1, t));
-                        float v_hatb = vB[l][iN] / (1.0f - std::pow(beta2, t));
+                        float m_hatb = mB[l][iN] / (1.0f - pow(beta1, t));
+                        float v_hatb = vB[l][iN] / (1.0f - pow(beta2, t));
 
-                        net.b[l][iN] -= lr * m_hatb / (std::sqrt(v_hatb) + eps);
+                        net.b[l][iN] -= lr * m_hatb / (sqrt(v_hatb) + eps);
                     }
                 }
             }
@@ -838,17 +793,18 @@ float trainAdam(MLP& net,
 }
 
 // ------------------------------------------------------------
-// 6) reconstruct from fixed layout (ground truth, no AE)
+// 6) Reconstruction from fixed block (ground truth coeffs)
 // ------------------------------------------------------------
-void reconstruct_from_fixed_layout_truth(int s, float out[RES][RES])
+void reconstruct_from_fixed_block_truth(int s, float out[RES][RES])
 {
     if (s < 0 || s >= NUM_SHAPES) return;
 
     float dctTmp[RES][RES] = { 0 };
 
-    // Use the fixed-layout feature vector directly
     std::vector<float>& feat = g_fixedFeatures[s];
-    for (int i = 0; i < TOP_K; i++)
+    int K = std::min(TOP_K, (int)feat.size());
+
+    for (int i = 0; i < K; i++)
     {
         int u = g_fixedU[i];
         int v = g_fixedV[i];
@@ -859,29 +815,32 @@ void reconstruct_from_fixed_layout_truth(int s, float out[RES][RES])
 }
 
 // ------------------------------------------------------------
-// 7) reconstruct from AE output
+// 7) Reconstruction from AE output
 // ------------------------------------------------------------
 void reconstruct_from_AE_output(int s, float out[RES][RES])
 {
     if (s < 0 || s >= NUM_SHAPES) return;
     if (g_featMeanVec.empty() || g_featStdVec.empty()) return;
 
-    // Input to AE is normalized fixed-layout features
-    std::vector<float>& xNorm = g_trainX[s];
-
-    // Forward pass through AE
+    std::vector<float> xNorm = g_trainX[s];
     std::vector<float> yNorm = g_autoencoder.forward(xNorm);
 
-    // --- De-normalize per feature ---
     std::vector<float> y(yNorm.size());
     for (int i = 0; i < (int)yNorm.size(); i++)
     {
-        y[i] = yNorm[i] * g_featStdVec[i] + g_featMeanVec[i];
+        if (i < (int)g_featMeanVec.size())
+        {
+            y[i] = yNorm[i] * g_featStdVec[i] + g_featMeanVec[i];
+        }
+        else
+        {
+            y[i] = yNorm[i];
+        }
     }
 
-    // --- Fill DCT grid at fixed positions ---
     float dctTmp[RES][RES] = { 0 };
     int K = std::min(TOP_K, (int)y.size());
+
     for (int i = 0; i < K; i++)
     {
         int u = g_fixedU[i];
@@ -889,8 +848,69 @@ void reconstruct_from_AE_output(int s, float out[RES][RES])
         dctTmp[u][v] = y[i];
     }
 
-    // --- Inverse DCT -> spatial SDF ---
     computeInverseDCT(dctTmp, out);
+}
+
+void drawEnergySpectrum(float dct[RES][RES], int blockU, float px, float py, float scale)
+{
+    // compute min/max log-energy for colour scaling
+    float minE = 1e9f, maxE = -1e9f;
+    static float logE[RES][RES];
+
+    for (int u = 0; u < RES; u++)
+    {
+        for (int v = 0; v < RES; v++)
+        {
+            float e = fabs(dct[u][v]);
+            e = log(1.0f + e);  // log magnitude
+            logE[u][v] = e;
+            minE = std::min(minE, e);
+            maxE = std::max(maxE, e);
+        }
+    }
+
+    float range = std::max(1e-6f, maxE - minE);
+
+    // draw heatmap (u = horizontal, v = vertical)
+    glPointSize(3.0f);
+    glBegin(GL_POINTS);
+    for (int u = 0; u < RES; u++)
+    {
+        for (int v = 0; v < RES; v++)
+        {
+            float val = (logE[u][v] - minE) / range * 2.0f - 1.0f; // [-1,1]
+            float r, g, b;
+            getJetColor(val, r, g, b);
+            ( r < 1e-4f && g < 1e-4f) ? glColor3f(1,1,1): glColor3f(r, g, b);
+
+            float x = px + u * scale;
+            float y = py + v * scale;
+            glVertex2f(x, y);
+        }
+    }
+    glEnd();
+
+    // overlay rectangle for UxU block
+    float x0 = px;
+    float y0 = py;
+    float x1 = px + blockU * scale;
+    float y1 = py + blockU * scale;
+
+    glColor3f(1.0f, 0,0);
+    glLineWidth(5.0f);
+    glBegin(GL_LINE_LOOP);
+    glVertex2f(x0, y0);
+    glVertex2f(x1, y0);
+    glVertex2f(x1, y1);
+    glVertex2f(x0, y1);
+    glEnd();
+
+    // axes labels
+    setup2d();
+    char buf[64];
+    sprintf(buf, "Energy Spectrum (%dx%d block)", blockU, blockU);
+    drawString(buf, px + 10, py - 20);
+    restore3d();
 }
 
 
@@ -900,22 +920,20 @@ void reconstruct_from_AE_output(int s, float out[RES][RES])
 void rebuildAll()
 {
     generateDataset();
-    computeFixedLayout();
+    computeFixedBlockLayout();
     buildFixedLayoutFeatures();
     buildTrainingData();
 
-    // Initialize AE: input=TOP_K, hidden -> LATENT -> hidden, output=TOP_K
-    // Using tanh in hidden, linear output in genericMLP 
     g_autoencoder.initialize
     (
         TOP_K,
-        { 32,LATENT_DIM,32 },
+        { 32, LATENT_DIM, 32 },
         TOP_K
     );
 
     g_lastLoss = 0.0f;
 
-    reconstruct_from_fixed_layout_truth(g_currentShape, g_reconFixed);
+    reconstruct_from_fixed_block_truth(g_currentShape, g_reconFixed);
     reconstruct_from_AE_output(g_currentShape, g_reconAE);
 }
 
@@ -935,15 +953,14 @@ void update(int value)
 
     if (g_trainMode == TRAIN_SGD)
     {
-        g_lastLoss = trainSGD(g_autoencoder, g_trainX, g_trainX, 50, 0.1, 4);
+        g_lastLoss = trainSGD(g_autoencoder, g_trainX, g_trainX, 20, 0.1f, 5);
     }
     else
     {
-        g_lastLoss = trainAdam(g_autoencoder, g_trainX, g_trainX, 50, 1e-3f, 0.9f, 0.99f, 1e-8f, 4);
+        g_lastLoss = trainAdam(g_autoencoder, g_trainX, g_trainX, 20, 1e-3f, 0.9f, 0.999f, 1e-8f, 5);
     }
 
-    // Update reconstructn for current shape after training chunk
-    reconstruct_from_fixed_layout_truth(g_currentShape, g_reconFixed);
+    reconstruct_from_fixed_block_truth(g_currentShape, g_reconFixed);
     reconstruct_from_AE_output(g_currentShape, g_reconAE);
 }
 
@@ -952,9 +969,8 @@ void draw()
     backGround(0.9f);
     drawGrid(100);
 
-    // Draw current polygon
     glColor3f(0, 0, 0);
-    auto& poly = g_samples[g_currentShape].poly;
+    std::vector<zVector>& poly = g_samples[g_currentShape].poly;
     int n = (int)poly.size();
     for (int i = 0; i < n; i++)
     {
@@ -962,36 +978,34 @@ void draw()
         drawLine(zVecToAliceVec(poly[i]), zVecToAliceVec(poly[j]));
     }
 
-    // Original SDF
-    drawSDF(g_samples[g_currentShape].sdf, -(float(RES * 2 + 10)), -float(RES * 0.5), 1.0f);
+    drawSDF(g_samples[g_currentShape].sdf, -(float)(RES * 2 + 10), -float(RES * 0.5f), 1.0f);
+    drawSDF(g_reconFixed, -(float)(RES * 0.5f), -float(RES * 0.5f), 1.0f);
+    drawSDF(g_reconAE, (float)(RES + 10), -float(RES * 0.5f), 1.0f);
 
-    // Fixed-layout reconstructionruction (truth coefficients)
-    drawSDF(g_reconFixed, -(float(RES * 0.5)), -float(RES * 0.5), 1.0f);
+    drawEnergySpectrum(g_samples[g_currentShape].dct, BLOCK_U, -(float)(RES * 0.5f), float(RES * 0.5 + 10) , 1.0f);
 
-    // AE reruction
-    drawSDF(g_reconAE, (float(RES + 10)), -float(RES * 0.5), 1.0f);
 
-    // UI
     setup2d();
     glColor3f(0, 0, 0);
 
     char buf[256];
-    sprintf(buf, "Shape %d / %d   (keys 1-5 to switch)", g_currentShape + 1, NUM_SHAPES);
+    sprintf(buf, "Shape %d / %d   (keys 1-5)", g_currentShape + 1, NUM_SHAPES);
     drawString(buf, 20, 40);
 
-    drawString("Left: Original SDF", 20, 60);
-    drawString("Middle: Fixed-layout reconstruction (true coeffs)", 20, 80);
-    drawString("Right: Autoencoder reconstruction", 20, 100);
+    sprintf(buf, "BLOCK_U = %d  (TOP_K = %d)", BLOCK_U, TOP_K);
+    drawString(buf, 20, 60);
 
-    drawString(std::string("Training [t]: ") + (g_isTraining ? "ON" : "OFF"), 20, 130);
-    drawString(std::string("Mode [m]: ") + ((g_trainMode == TRAIN_SGD) ? "SGD" : "Adam"), 20, 150);
+    drawString("Left: Original SDF", 20, 80);
+    drawString("Middle: Fixed UxU block reconstruction", 20, 100);
+    drawString("Right: Autoencoder reconstruction", 20, 120);
+
+    drawString(std::string("Training [t]: ") + (g_isTraining ? "ON" : "OFF"), 20, 150);
+    drawString(std::string("Mode [m]: ") + ((g_trainMode == TRAIN_SGD) ? "SGD" : "Adam"), 20, 170);
 
     sprintf(buf, "Last loss: %.6f", g_lastLoss);
-    drawString(buf, 20, 170);
+    drawString(buf, 20, 190);
 
-    drawString("Press 'r' to regenerate shapes & reset", 20, 190);
-    drawString("Press 't' to toggle training", 20, 210);
-    drawString("Press 'm' to toggle SGD/Adam", 20, 230);
+    drawString("Press 'r' to regenerate shapes", 20, 210);
 
     restore3d();
 }
@@ -1019,7 +1033,7 @@ void keyPress(unsigned char k, int xm, int ym)
         if (idx >= 0 && idx < NUM_SHAPES)
         {
             g_currentShape = idx;
-            reconstruct_from_fixed_layout_truth(g_currentShape, g_reconFixed);
+            reconstruct_from_fixed_block_truth(g_currentShape, g_reconFixed);
             reconstruct_from_AE_output(g_currentShape, g_reconAE);
         }
     }

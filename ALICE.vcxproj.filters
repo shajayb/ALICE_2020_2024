@@ -39,6 +39,9 @@
     <Filter Include="IMP_SKETCHES">
       <UniqueIdentifier>{7fee8933-31ce-4473-be92-e18c303c7d31}</UniqueIdentifier>
     </Filter>
+    <Filter Include="SDF_DCT2_AE">
+      <UniqueIdentifier>{13b8f13a-253a-470e-8573-63e7571a9396}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\userSrc\sketch_3DfieldSlicer.cpp">
@@ -89,9 +92,14 @@
     <ClCompile Include="src\userSrc\sketch_SF_blends.cpp">
       <Filter>sketches</Filter>
     </ClCompile>
-    <ClCompile Include="src\userSrc\Sketch_ON.cpp" />
-    <ClCompile Include="src\userSrc\sketch_SDF_DCT_AEC_PCA.cpp" />
+    <ClCompile Include="src\userSrc\Sketch_OpenNurb_export.cpp" />
+    <ClCompile Include="src\userSrc\sketch_sdf_dct_ae.cpp" />
     <ClCompile Include="src\userSrc\sketch_dct2_topK_reconstruction_test.cpp" />
-    <ClCompile Include="src\userSrc\sketch_DCT2_TOPK_FIXED_LAYOUT.cpp" />
+    <ClCompile Include="src\userSrc\sketch_DCT2_TOPK_FIXED_LAYOUT.cpp">
+      <Filter>SDF_DCT2_AE</Filter>
+    </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_DCT2_FIXED_BLOCK_LAYOUT.cpp">
+      <Filter>SDF_DCT2_AE</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
