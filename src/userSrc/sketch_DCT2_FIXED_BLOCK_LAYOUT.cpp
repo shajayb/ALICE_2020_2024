@@ -15,12 +15,19 @@
 #include <random>
 #include <limits>
 
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <cctype>
+#include <vector>
+
+
 using namespace zSpace;
 
 // ------------------------------------------------------------
 // Config
 // ------------------------------------------------------------
-#define RES 128
+#define RES 64
 #define NUM_SHAPES 5
 
 // Fixed low-frequency block size U x U
@@ -51,6 +58,81 @@ inline Alice::vec zVecToAliceVec(zVector& in)
 {
     return Alice::vec(in.x, in.y, in.z);
 }
+
+std::vector<std::vector<zVector>> readPolygonsFromInShapes(const std::string& path = "data/inShapes.json")
+{
+    std::ifstream file(path);
+    std::vector<std::vector<zVector>> polygons;
+    if (!file.is_open())
+    {
+        std::cerr << "Cannot open " << path << std::endl;
+        return polygons;
+    }
+
+    std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    file.close();
+
+    size_t pos = 0;
+    while ((pos = data.find("\"polys\"", pos)) != std::string::npos)
+    {
+        pos = data.find('[', pos); // move to first [
+        if (pos == std::string::npos) break;
+
+        int depth = 0;
+        std::string polyBlock;
+        for (size_t i = pos; i < data.size(); ++i)
+        {
+            char c = data[i];
+            if (c == '[') depth++;
+            if (c == ']') depth--;
+            polyBlock += c;
+            if (depth == 0)
+            {
+                pos = i;
+                break;
+            }
+        }
+
+        // --- Extract coordinates from polyBlock
+        std::vector<zVector> currentPoly;
+        std::string num;
+        float x = 0, y = 0, z = 0;
+        int count = 0;
+        for (size_t i = 0; i < polyBlock.size(); i++)
+        {
+            char c = polyBlock[i];
+            if (std::isdigit(c) || c == '-' || c == '.' || c == 'e' || c == 'E')
+            {
+                num += c;
+            }
+            else
+            {
+                if (!num.empty())
+                {
+                    float val = std::stof(num);
+                    num.clear();
+
+                    if (count == 0) x = val;
+                    else if (count == 1) y = val;
+                    else if (count == 2)
+                    {
+                        z = val;
+                        currentPoly.push_back(zVector(x, y, z));
+                        count = -1;
+                    }
+                    count++;
+                }
+            }
+        }
+
+        if (!currentPoly.empty())
+            polygons.push_back(currentPoly);
+    }
+
+    std::cout << "Parsed " << polygons.size() << " polygons from " << path << std::endl;
+    return polygons;
+}
+
 
 // ------------------------------------------------------------
 // Polygon + SDF helpers
@@ -159,7 +241,62 @@ float sdf_Voronoi(float x, float y)
     return sdf;
 }
 
-std::vector<zVector> randomPolygon(int n, float radiusMin = 0.3f, float radiusMax = 0.7f)
+//--------------------------------------------------------------
+// SDF : Union of two circles
+//--------------------------------------------------------------
+//--------------------------------------------------------------
+// SDF : Union of multiple circles (similar style to sdf_Polygon / sdf_Voronoi)
+
+//--------------------------------------------------------------
+
+//--------------------------------------------------------------
+// Helper : distribute circles around the center of the SDF domain
+//--------------------------------------------------------------
+
+static bool init = false;
+static std::vector<zVector> centers;
+static std::vector<float> radii;
+
+inline void setupConcentricCircles(std::vector<zVector>& centers,
+    std::vector<float>& radii,
+    int numCircles = 6,
+    float parentRadius = 0.3f,
+    float minR = 0.05f,
+    float maxR = 0.15f)
+{
+    centers.resize(numCircles);
+    radii.resize(numCircles);
+
+    for (int i = 0; i < numCircles; i++)
+    {
+        // evenly spaced angles around origin
+        float angle = (2.0f * PI * i) / numCircles;
+
+        // small offset from origin so they stay near the center
+        float x = parentRadius * cos(angle);
+        float y = parentRadius * sin(angle);
+
+        centers[i] = zVector(x, y, 0);
+        radii[i] = ofRandom(minR, maxR);
+    }
+}
+
+float sdf_CirclesUnion(zVector& p)
+{
+
+    float dMin = 1e9f;
+    for (int i = 0; i < centers.size(); i++)
+    {
+        zVector d = p - centers[i];
+        float sd = sqrt(d.x * d.x + d.y * d.y) - radii[i];
+        dMin = std::min(dMin, sd);
+    }
+
+    return dMin;
+}
+
+
+std::vector<zVector> randomPolygon(int n, float radiusMin = 0.1f, float radiusMax = 0.15f)
 {
     std::vector<zVector> poly;
     poly.reserve(n);
@@ -286,6 +423,27 @@ void computeInverseDCT(float in[RES][RES], float out[RES][RES])
 
 //
 
+inline void normaliseSDF(float field[RES][RES], double targetMin = -1.0, double targetMax = 1.0)
+{
+    double fMin = 1e9, fMax = -1e9;
+
+    for (int i = 0; i < RES; i++)
+        for (int j = 0; j < RES; j++)
+        {
+            fMin = std::min(fMin, (double)field[i][j]);
+            fMax = std::max(fMax, (double)field[i][j]);
+        }
+
+    double range = (fMax - fMin);
+    if (range < 1e-9) range = 1.0;
+
+    for (int i = 0; i < RES; i++)
+        for (int j = 0; j < RES; j++)
+        {
+            double t = (field[i][j] - fMin) / range;
+            field[i][j] = (float)(targetMin + t * (targetMax - targetMin));
+        }
+}
 
 
 ///
@@ -316,7 +474,10 @@ std::vector<std::vector<float>> g_trainX;
 
 // AE + training
 #include "genericMLP.h"
+
+
 MLP g_autoencoder;
+
 
 bool g_isTraining = false;
 float g_lastLoss = 0.0f;
@@ -334,49 +495,9 @@ int g_currentShape = 0;
 float g_reconFixed[RES][RES];
 float g_reconAE[RES][RES];
 
-// Encoder–decoder wrapper
-class AutoEncoder : public MLP
-{
-public:
-    MLP encoder, decoder;
+std::vector<std::vector<zVector>> g_polygons;
 
-    void initializeAE(int inDim, int bottleneckDim, int hidden = 64)
-    {
-        encoder.initialize(inDim, { hidden }, bottleneckDim);
-        decoder.initialize(bottleneckDim, { hidden }, inDim);
-    }
 
-    std::vector<float> encode(std::vector<float>& x) { return encoder.forward(x); }
-    std::vector<float> decode(std::vector<float>& z) { return decoder.forward(z); }
-
-    void train(std::vector<std::vector<float>>& data, int epochs = 500, float lr = 0.01f)
-    {
-        for (int e = 0; e < epochs; e++)
-        {
-            float totalLoss = 0;
-            for (auto& x : data)
-            {
-                auto z = encoder.forward(x);
-                auto x_hat = decoder.forward(z);
-
-                std::vector<float> gradOut(x.size());
-                for (int i = 0; i < x.size(); i++)
-                {
-                    float diff = x_hat[i] - x[i];
-                    gradOut[i] = 2 * diff;
-                    totalLoss += diff * diff;
-                }
-
-                decoder.backward(gradOut, lr);
-
-                std::vector<float> gradZ = gradOut;
-                encoder.backward(gradZ, lr);
-            }
-            if (e % 50 == 0) printf("epoch %d  loss %.4f\n", e, totalLoss / data.size());
-        }
-    }
-
-};
 
 // ------------------------------------------------------------
 // Draw SDF
@@ -448,11 +569,23 @@ void generateDataset()
                 }
                 else
                 {
-                    g_samples[s].sdf[i][j] = sdf_Polygon(p, g_samples[s].poly);
+                    if (s == 4)
+                    {
+                        setupConcentricCircles(centers, radii, 12, 0.9f, 0.0001f, 0.0002f);
+                        g_samples[s].sdf[i][j] = sdf_CirclesUnion(p);
+                    }
+                    else if(s == 3)
+                    {
+                        setupConcentricCircles(centers, radii, 3, 0.6f, 0.0001f, 0.0002f);
+                        g_samples[s].sdf[i][j] = sdf_CirclesUnion(p);
+                    }                       
+                    else
+                     g_samples[s].sdf[i][j] = sdf_Polygon(p, g_samples[s].poly);
                 }
             }
         }
 
+        normaliseSDF(g_samples[s].sdf);
         computeDCT(g_samples[s].sdf, g_samples[s].dct);
     }
 
@@ -600,55 +733,6 @@ float trainSGD(MLP& net,
     return totalLoss;
 }
 
-//float trainSGD(MLP& net,
-//    std::vector<std::vector<float>>& X,
-//    std::vector<std::vector<float>>& Y,
-//    int epochs,
-//    float lr,
-//    int batchSize)
-//{
-//    if (X.empty()) return 0.0f;
-//
-//    int inputDim = (int)X[0].size();
-//    int latentDim = std::min(LATENT_DIM, inputDim);
-//    int hiddenDim = 0;
-//
-//    static AutoEncoder pcaAE;
-//    pcaAE.initializeAE(inputDim, latentDim, hiddenDim);
-//
-//    printf("Reducing dimensionality from %d → %d using AutoEncoder (PCA mode)\n",
-//        inputDim, latentDim);
-//
-//    // Train the AE to reconstruct X (identity mapping)
-//    pcaAE.train(X, epochs, lr);
-//
-//    // Get latent representation and reconstruction error
-//    float totalLoss = 0.0f;
-//    for (int i = 0; i < X.size(); i++)
-//    {
-//        std::vector<float> z = pcaAE.encode(X[i]);
-//        std::vector<float> x_recon = pcaAE.decode(z);
-//
-//        // Mean squared reconstruction error
-//        float mse = 0.0f;
-//        for (int j = 0; j < X[i].size(); j++)
-//        {
-//            float diff = x_recon[j] - X[i][j];
-//            mse += diff * diff;
-//        }
-//        mse /= (float)X[i].size();
-//        totalLoss += mse;
-//    }
-//
-//    totalLoss /= (float)X.size();
-//    printf("[PCA] Reconstruction Loss: %.6f\n", totalLoss);
-//
-//    // Optionally replace your existing MLP weights with the trained AE (for later reconstruction)
-//    net = pcaAE.encoder;
-//
-//    return totalLoss;
-//}
-//
 
 float trainAdam(MLP& net,
     std::vector<std::vector<float>>& X,
@@ -851,6 +935,120 @@ void reconstruct_from_AE_output(int s, float out[RES][RES])
     computeInverseDCT(dctTmp, out);
 }
 
+//--------------------------------------------------------------
+// Encode: map normalized input feature x to latent code z
+// Assumes MLP: [TOP_K] -> [LATENT_DIM] -> [TOP_K]
+//--------------------------------------------------------------
+//--------------------------------------------------------------
+// Encode input -> latent
+// Automatically detects latent layer by smallest layer width
+//--------------------------------------------------------------
+//--------------------------------------------------------------
+// Encode input -> latent
+// Robust to arbitrary hidden layer counts (symmetric AE)
+//--------------------------------------------------------------
+
+//--------------------------------------------------------------
+// Helper: get latent activation layer index for symmetric AE
+// activations: [0]=input, [L]=output, middle = latent
+//--------------------------------------------------------------
+int getLatentActivationIndex(const MLP& net)
+{
+    int L = (int)net.activations.size(); // activations filled after forward()
+    if (L < 3)
+    {
+        return L - 1; // degenerate, fallback to output
+    }
+
+    int latentIndex = L / 2; // middle
+    if (latentIndex <= 0) latentIndex = 1;
+    if (latentIndex >= L - 1) latentIndex = L - 2;
+
+    return latentIndex;
+}
+//--------------------------------------------------------------
+// Encode: input x -> latent z
+//--------------------------------------------------------------
+std::vector<float> encodeToLatent(MLP& net, std::vector<float>& x)
+{
+    net.forward(x);
+
+    int latentIndex = getLatentActivationIndex(net);
+    return net.activations[latentIndex];
+}
+
+
+//--------------------------------------------------------------
+// Decode: map latent code z to normalized output y
+// Uses the last layer weights/biases of the AE
+// Activation: tanh (matches genericMLP training)
+//--------------------------------------------------------------
+//--------------------------------------------------------------
+// Decode latent -> output
+// Traverses decoder layers dynamically
+//--------------------------------------------------------------
+//--------------------------------------------------------------
+// Decode latent -> output
+// Robust to arbitrary symmetric AE depth
+//--------------------------------------------------------------
+//--------------------------------------------------------------
+// Decode: latent z -> output y (normalized coeffs)
+// Assumes symmetric AE; latent is middle activation layer
+//--------------------------------------------------------------
+std::vector<float> decodeFromLatent(MLP& net, std::vector<float>& z)
+{
+    if (net.W.empty() || net.b.empty())
+    {
+        return std::vector<float>();
+    }
+
+    // We need a latent index in *activation* space.
+    // Reconstruct a fake activations.size() from architecture:
+    int numWeightLayers = (int)net.W.size();      // e.g. 4 for [in,16,L,16,out]
+    int numActivations = numWeightLayers + 1;    // e.g. 5
+
+    int latentIndex = numActivations / 2;         // e.g. 2
+    if (latentIndex <= 0) latentIndex = 1;
+    if (latentIndex >= numActivations - 1) latentIndex = numActivations - 2;
+
+    // First decoder layer index in W:
+    // W[l] maps activations[l] -> activations[l+1]
+    int startLayer = latentIndex;
+
+    std::vector<float> a = z;
+
+    for (int l = startLayer; l < numWeightLayers; l++)
+    {
+        int outSize = (int)net.W[l].size();
+        std::vector<float> next(outSize, 0.0f);
+
+        for (int i = 0; i < outSize; i++)
+        {
+            float sum = net.b[l][i];
+
+            for (int j = 0; j < (int)net.W[l][i].size(); j++)
+            {
+                sum += net.W[l][i][j] * a[j];
+            }
+
+            // hidden layers: tanh, final layer: linear
+            if (l < numWeightLayers - 1)
+            {
+                next[i] = std::tanh(sum);
+            }
+            else
+            {
+                next[i] = sum;
+            }
+        }
+
+        a = next;
+    }
+
+    return a; // normalized AE output
+}
+
+
 void drawEnergySpectrum(float dct[RES][RES], int blockU, float px, float py, float scale)
 {
     // compute min/max log-energy for colour scaling
@@ -913,6 +1111,162 @@ void drawEnergySpectrum(float dct[RES][RES], int blockU, float px, float py, flo
     restore3d();
 }
 
+// ------------------------------------------------------------
+// Linear blend between two SDFs using their coefficients
+// ------------------------------------------------------------
+void blendSDFs(
+    float coeffsA[RES][RES],
+    float coeffsB[RES][RES],
+    float t,
+    float outSDF[RES][RES]
+)
+{
+    // interpolate coefficients
+    float interp[RES][RES];
+    for (int i = 0; i < RES; i++)
+    {
+        for (int j = 0; j < RES; j++)
+        {
+            interp[i][j] = (1.0f - t) * coeffsA[i][j] + t * coeffsB[i][j];
+        }
+    }
+
+    // decode back to image / field
+    computeInverseDCT(interp, outSDF);
+}
+
+// ------------------------------------------------------------
+// visualisation
+// ------------------------------------------------------------
+void visualizeInterpolatedSDFs(int idxA, int idxB, int numSteps = 5)
+{
+    if (idxA < 0 || idxB < 0 ||
+        idxA >= g_samples.size() || idxB >= g_samples.size())
+        return;
+
+    float blended[RES][RES];
+
+    for (int s = 0; s <= numSteps; s++)
+    {
+        float t = (float)s / (float)numSteps;
+
+        // linear blend of DCT coefficients
+        blendSDFs(g_samples[idxA].dct, g_samples[idxB].dct, t, blended);
+
+        // visualize
+        float offsetX = (s - numSteps / 2.0f) * (RES + 10);
+        drawSDF(blended, offsetX, -float(RES) * 0.5f - RES - 20, 1.0f);
+    }
+}
+
+//--------------------------------------------------------------
+// Naive interpolation directly on SDF field values
+// (no DCT coefficient blending)
+//--------------------------------------------------------------
+void visualizeInterpolatedSDFValues(int idxA, int idxB, int numSteps = 5)
+{
+    if (idxA < 0 || idxB < 0) return;
+    if (idxA >= g_samples.size() || idxB >= g_samples.size()) return;
+
+    float blended[RES][RES];
+
+    // Loop through interpolation steps
+    for (int s = 0; s <= numSteps; s++)
+    {
+        float t = (float)s / (float)numSteps;
+
+        // --- 1) Linear blend of SDF values ---
+        for (int i = 0; i < RES; i++)
+        {
+            for (int j = 0; j < RES; j++)
+            {
+                float a = g_samples[idxA].sdf[i][j];
+                float b = g_samples[idxB].sdf[i][j];
+                blended[i][j] = (1.0f - t) * a + t * b;
+            }
+        }
+
+        // --- 2) Visualize interpolated SDF directly ---
+        float offsetX = (s - numSteps / 2.0f) * (RES + 10);
+        float offsetY = -float(RES) * 0.5f - RES * 4.0f - 40.0f;
+        drawSDF(blended, offsetX, offsetY, 1.0f);
+    }
+}
+
+
+//--------------------------------------------------------------
+// Latent-space interpolation between two shapes' DCT coeffs
+// idxA, idxB : indices into g_trainX / g_samples
+// numSteps   : number of intermediate frames (inclusive endpoints)
+//--------------------------------------------------------------
+//--------------------------------------------------------------
+// Latent-space interpolation using new AutoEncoder
+//--------------------------------------------------------------
+
+
+//--------------------------------------------------------------
+// Latent-space interpolation for monolithic MLP autoencoder
+// (no explicit encoder/decoder separation)
+//--------------------------------------------------------------
+//--------------------------------------------------------------
+// Latent-space interpolation for monolithic MLP autoencoder
+//--------------------------------------------------------------
+void visualizeLatentInterpolatedSDFs_MLP(int idxA, int idxB, int numSteps = 8)
+{
+    if (idxA < 0 || idxB < 0) return;
+    if (idxA >= (int)g_trainX.size() || idxB >= (int)g_trainX.size()) return;
+    if (g_featMeanVec.empty() || g_featStdVec.empty()) return;
+
+    // Encode endpoints
+    std::vector<float> zA = encodeToLatent(g_autoencoder, g_trainX[idxA]);
+    std::vector<float> zB = encodeToLatent(g_autoencoder, g_trainX[idxB]);
+    if (zA.empty() || zB.empty() || zA.size() != zB.size()) return;
+
+    float sdf[RES][RES];
+
+    for (int s = 0; s <= numSteps; s++)
+    {
+        float t = (float)s / (float)numSteps;
+
+        // 1) interpolate latent
+        std::vector<float> z(zA.size());
+        for (int i = 0; i < (int)z.size(); i++)
+        {
+            z[i] = (1.0f - t) * zA[i] + t * zB[i];
+        }
+
+        // 2) decode to normalized coeffs
+        std::vector<float> yNorm = decodeFromLatent(g_autoencoder, z);
+        if (yNorm.empty()) return;
+
+        // 3) un-normalize
+        std::vector<float> y(yNorm.size());
+        int K = std::min((int)yNorm.size(), (int)g_featMeanVec.size());
+        for (int i = 0; i < K; i++)
+        {
+            y[i] = yNorm[i] * g_featStdVec[i] + g_featMeanVec[i];
+        }
+
+        // 4) fill DCT block
+        float dctTmp[RES][RES] = { 0 };
+        int Kblock = std::min(TOP_K, (int)y.size());
+        for (int i = 0; i < Kblock; i++)
+        {
+            int u = g_fixedU[i];
+            int v = g_fixedV[i];
+            dctTmp[u][v] = y[i];
+        }
+
+        // 5) inverse DCT → SDF
+        computeInverseDCT(dctTmp, sdf);
+
+        // 6) draw
+        float offsetX = (s - numSteps * 0.5f) * (RES + 10);
+        float offsetY = -float(RES) * 3.5f;
+        drawSDF(sdf, offsetX, offsetY, 1.0f);
+    }
+}
+
 
 // ------------------------------------------------------------
 // Setup + wiring
@@ -927,9 +1281,11 @@ void rebuildAll()
     g_autoencoder.initialize
     (
         TOP_K,
-        { 32, LATENT_DIM, 32 },
+        { LATENT_DIM},
         TOP_K
     );
+
+
 
     g_lastLoss = 0.0f;
 
@@ -944,6 +1300,9 @@ void setup()
     srand(1);
 
     rebuildAll();
+
+    g_polygons = readPolygonsFromInShapes("data/inShapes.json");
+
 }
 
 void update(int value)
@@ -953,11 +1312,20 @@ void update(int value)
 
     if (g_trainMode == TRAIN_SGD)
     {
+       // g_lastLoss = trainSGD(g_autoencoder, g_trainX, 20, 0.1f, 5);
+
         g_lastLoss = trainSGD(g_autoencoder, g_trainX, g_trainX, 20, 0.1f, 5);
+        /*for (int e = 0; e < 20; e++)
+        {
+            for (auto& x : g_trainX)
+            {
+                g_lastLoss =  g_autoencoder.trainStep(x, 0.01f);
+            }
+        }*/
     }
     else
     {
-        g_lastLoss = trainAdam(g_autoencoder, g_trainX, g_trainX, 20, 1e-3f, 0.9f, 0.999f, 1e-8f, 5);
+       // g_lastLoss = trainAdam(g_autoencoder, g_trainX, g_trainX, 20, 1e-3f, 0.9f, 0.999f, 1e-8f, 5);
     }
 
     reconstruct_from_fixed_block_truth(g_currentShape, g_reconFixed);
@@ -968,6 +1336,32 @@ void draw()
 {
     backGround(0.9f);
     drawGrid(100);
+
+    //
+
+    for (int i = 0; i < g_polygons.size(); i++)
+    {
+        const auto& poly = g_polygons[i];
+        if (poly.empty()) continue;
+
+        // Slight z offset per polygon for clarity
+        float zOffset = 0.1f * i;
+
+        glBegin(GL_LINE_LOOP);
+        for (auto& p : poly)
+        {
+            glVertex3f(p.x, p.y, p.z + zOffset);
+        }
+        glEnd();
+
+        // Optional: draw polygon index at centroid
+        zVector centroid(0, 0, 0);
+        for (auto& p : poly) centroid += p;
+        centroid /= (float)poly.size();
+
+        drawTextAtVec(to_string(i), zVecToAliceVec(centroid));
+    }
+    //
 
     glColor3f(0, 0, 0);
     std::vector<zVector>& poly = g_samples[g_currentShape].poly;
@@ -1008,6 +1402,10 @@ void draw()
     drawString("Press 'r' to regenerate shapes", 20, 210);
 
     restore3d();
+
+    visualizeInterpolatedSDFs(2,4, 8);
+    visualizeLatentInterpolatedSDFs_MLP (2, 4, 8);
+    visualizeInterpolatedSDFValues(2, 4, 8);
 }
 
 void keyPress(unsigned char k, int xm, int ym)
@@ -1036,6 +1434,12 @@ void keyPress(unsigned char k, int xm, int ym)
             reconstruct_from_fixed_block_truth(g_currentShape, g_reconFixed);
             reconstruct_from_AE_output(g_currentShape, g_reconAE);
         }
+    }
+
+    if (k == 'i')
+    {
+        std::vector<std::vector<zVector>> polygons = readPolygonsFromInShapes("data/inShapes.json");
+        printf(" %i num polys\n", polygons.size());
     }
 }
 
