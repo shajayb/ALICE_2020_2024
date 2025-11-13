@@ -31,10 +31,10 @@ using namespace zSpace;
 #define NUM_SHAPES 5
 
 // Fixed low-frequency block size U x U
-#define BLOCK_U 12
+#define BLOCK_U 30
 #define TOP_K (BLOCK_U * BLOCK_U)
 
-#define LATENT_DIM 2
+#define LATENT_DIM 16
 
 #ifndef PI
 #define PI 3.14159265358979323846
@@ -696,7 +696,7 @@ std::vector<std::vector<float>> g_trainX;
 
 // AE + training
 #include "genericMLP.h"
-
+#include "scalarField.h"
 
 MLP g_autoencoder;
 
@@ -767,6 +767,53 @@ void drawSDF(float fld[RES][RES], float px, float py, float scale)
 // ------------------------------------------------------------
 // 1) Generate dataset: polygons + SDF + DCT
 // ------------------------------------------------------------
+
+void generateDataset()
+{
+    g_samples.clear();
+    g_samples.resize(NUM_SHAPES);
+
+    for (int s = 0; s < NUM_SHAPES; s++)
+    {
+        int nv = 5 + (rand() % 4);
+        g_samples[s].polys.push_back( randomPolygon(nv) );
+
+        for (int i = 0; i < RES; i++)
+        {
+            for (int j = 0; j < RES; j++)
+            {
+                float x = (float)i / (RES - 1) * 2.0f - 1.0f;
+                float y = (float)j / (RES - 1) * 2.0f - 1.0f;
+                zVector p(x, y, 0);
+
+                if (s == 0)
+                {
+                    g_samples[s].sdf[i][j] = sdf_Voronoi(x, y);
+                }
+                else
+                {
+                    if (s == 4)
+                    {
+                        setupConcentricCircles(centers, radii, 12, 0.9f, 0.0001f, 0.0002f);
+                        g_samples[s].sdf[i][j] = sdf_CirclesUnion(p);
+                    }
+                    else if (s == 3)
+                    {
+                        setupConcentricCircles(centers, radii, 3, 0.6f, 0.0001f, 0.0002f);
+                        g_samples[s].sdf[i][j] = sdf_CirclesUnion(p);
+                    }
+                    else
+                        g_samples[s].sdf[i][j] = sdf_Polygon(p, g_samples[s].polys[0]);
+                }
+            }
+        }
+
+        normaliseSDF(g_samples[s].sdf);
+        computeDCT(g_samples[s].sdf, g_samples[s].dct);
+    }
+
+    printf("Generated %d shapes.\n", NUM_SHAPES);
+}
 
 void generateDatasetFromInShapes( const std::string& jsonPath = "data/inShapes.json")
 {
@@ -1369,28 +1416,83 @@ void blendSDFs(
 // ------------------------------------------------------------
 // visualisation
 // ------------------------------------------------------------
+
+ScalarField2D sf;
+bool sf_initialized = false;
+double threshold = 0;
+
+void initializeScalarFieldGrid()
+{
+    if (sf_initialized) return;
+
+    float spacing = 1.0f;
+    for (int i = 0; i < SF_RES; i++)
+    {
+        for (int j = 0; j < SF_RES; j++)
+        {
+            sf.gridPoints[i][j] = zVector(
+                (i - SF_RES * 0.5f) * spacing,
+                (j - SF_RES * 0.5f) * spacing,
+                0);
+        }
+    }
+    sf_initialized = true;
+}
+
+
 void visualizeInterpolatedSDFs(int idxA, int idxB, int numSteps = 5)
 {
     if (idxA < 0 || idxB < 0 ||
         idxA >= g_samples.size() || idxB >= g_samples.size())
         return;
 
-    float blended_COEFFS[RES][RES];
+    initializeScalarFieldGrid();
+
+    float blended_DCT[RES][RES];
+    float reconstructed_coef[RES][RES];
 
     for (int s = 0; s <= numSteps; s++)
     {
         float t = (float)s / (float)numSteps;
 
-        // linear blend of DCT coefficients
-        blendSDFs(g_samples[idxA].dct, g_samples[idxB].dct, t, blended_COEFFS);
+        // --- Blend only the fixed UxU coefficients ---
+        float dctTmp[RES][RES] = { 0 };
+        int K = std::min(TOP_K, (int)g_fixedU.size());
 
-        // visualize
+        for (int i = 0; i < K; i++)
+        {
+            int u = g_fixedU[i];
+            int v = g_fixedV[i];
+            dctTmp[u][v] =
+                (1.0f - t) * g_samples[idxA].dct[u][v] +
+                t * g_samples[idxB].dct[u][v];
+        }
+
+        // --- Decode back to spatial domain ---
+        computeInverseDCT(dctTmp, reconstructed_coef);
+
+        // --- Copy reconstructed SDF to scalar field for contour drawing ---
+        for (int i = 0; i < SF_RES && i < RES; i++)
+            for (int j = 0; j < SF_RES && j < RES; j++)
+                sf.field[i][j] = reconstructed_coef[i][j];
+
         float offsetX = (s - numSteps / 2.0f) * (RES + 10);
-        drawSDF(blended_COEFFS, offsetX * 0.5, -float(RES) * 0.5f - RES - 20, 0.5f);
+        float offsetY = -float(RES) * 0.5f - RES - 20;
+
+        // --- Translate and draw zero-contours ---
+        glPushMatrix();
+        glTranslatef(offsetX, offsetY, 0);
+            glColor3f(0, 0, 0);
+               // drawSDF(reconstructed_coef, 0, 0, 0.5);
+            glColor3f(0, 0, 0);
+                sf.drawIsocontours(threshold);
+        glPopMatrix();
     }
 
     glColor3f(0, 0, 0);
-    drawString("interpolated coefficients ", -float(RES) * 0.5f, -float(RES) * 0.5f - RES - 20 - 10);
+    drawString("Interpolated DCT Coefficients (zero contours)",
+        -float(RES) * 0.5f,
+        -float(RES) * 0.5f - RES - 20 - 10);
 }
 
 //--------------------------------------------------------------
@@ -1444,37 +1546,35 @@ void visualizeLatentInterpolatedSDFs_MLP(int idxA, int idxB, int numSteps = 8)
     if (idxA >= (int)g_trainX.size() || idxB >= (int)g_trainX.size()) return;
     if (g_featMeanVec.empty() || g_featStdVec.empty()) return;
 
-    // Encode endpoints
+    initializeScalarFieldGrid();
+
+    // 1) Encode endpoints into latent space
     std::vector<float> zA = encodeToLatent(g_autoencoder, g_trainX[idxA]);
     std::vector<float> zB = encodeToLatent(g_autoencoder, g_trainX[idxB]);
     if (zA.empty() || zB.empty() || zA.size() != zB.size()) return;
 
-    float latent_SDF[RES][RES];
+    float reconstructed_latent[RES][RES];
 
     for (int s = 0; s <= numSteps; s++)
     {
         float t = (float)s / (float)numSteps;
 
-        // 1) interpolate latent
+        // --- interpolate latent vector ---
         std::vector<float> z(zA.size());
         for (int i = 0; i < (int)z.size(); i++)
-        {
             z[i] = (1.0f - t) * zA[i] + t * zB[i];
-        }
 
-        // 2) decode to normalized coeffs
+        // --- decode to normalized DCT coeffs ---
         std::vector<float> yNorm = decodeFromLatent(g_autoencoder, z);
-        if (yNorm.empty()) return;
+        if (yNorm.empty()) continue;
 
-        // 3) un-normalize
+        // --- un-normalize ---
         std::vector<float> y(yNorm.size());
         int K = std::min((int)yNorm.size(), (int)g_featMeanVec.size());
         for (int i = 0; i < K; i++)
-        {
             y[i] = yNorm[i] * g_featStdVec[i] + g_featMeanVec[i];
-        }
 
-        // 4) fill DCT block
+        // --- fill fixed-block DCT ---
         float dctTmp[RES][RES] = { 0 };
         int Kblock = std::min(TOP_K, (int)y.size());
         for (int i = 0; i < Kblock; i++)
@@ -1484,15 +1584,31 @@ void visualizeLatentInterpolatedSDFs_MLP(int idxA, int idxB, int numSteps = 8)
             dctTmp[u][v] = y[i];
         }
 
-        // 5) inverse DCT → SDF
-        computeInverseDCT(dctTmp, latent_SDF);
+        // --- inverse DCT to reconstruct SDF field ---
+        computeInverseDCT(dctTmp, reconstructed_latent);
 
-        // 6) draw
+        // --- copy reconstructed field into ScalarField2D ---
+        for (int i = 0; i < SF_RES && i < RES; i++)
+            for (int j = 0; j < SF_RES && j < RES; j++)
+                sf.field[i][j] = reconstructed_latent[i][j];
+
+        // --- translate and draw zero-isocontours ---
         float offsetX = (s - numSteps * 0.5f) * (RES + 10);
-        float offsetY = -float(RES) * 2.75f;
-        drawSDF(latent_SDF, offsetX * 0.5, offsetY, 0.5f);
+        float offsetY = -float(RES) * 3.5f;
+
+        glPushMatrix();
+        glTranslatef(offsetX, offsetY, 0);
+            glColor3f(0, 0, 0);
+                drawSDF(reconstructed_latent, 0, -RES, 0.5);
+            glColor3f(0, 0, 0);
+                sf.drawIsocontours(threshold);
+        glPopMatrix();
     }
-    drawString("interpolated latent vectors ", -float(RES) * 0.5f, -float(RES) * 2.75f - 10);
+
+    glColor3f(0, 0, 0);
+    drawString("Latent interpolation (zero contours)",
+        -float(RES) * 0.5f,
+        -float(RES) * 3.5f - 10);
 }
 
 
@@ -1501,8 +1617,8 @@ void visualizeLatentInterpolatedSDFs_MLP(int idxA, int idxB, int numSteps = 8)
 // ------------------------------------------------------------
 void rebuildAll()
 {
-   // generateDataset();
-    generateDatasetFromInShapes("data/inShapes.json");
+    generateDataset();
+    //generateDatasetFromInShapes("data/inShapes.json");
 
     computeFixedBlockLayout();
     buildFixedLayoutFeatures();
@@ -1511,7 +1627,7 @@ void rebuildAll()
     g_autoencoder.initialize
     (
         TOP_K,
-        { 64, 16, LATENT_DIM, 16, 64},
+        {32, LATENT_DIM, 32},
         TOP_K
     );
 
@@ -1523,6 +1639,7 @@ void rebuildAll()
     reconstruct_from_AE_output(g_currentShape, g_reconAE);
 }
 
+
 void setup()
 {
     backGround(0.9f);
@@ -1532,6 +1649,12 @@ void setup()
     rebuildAll();
 
     g_polygons = readPolygonsFromInShapes("data/inShapes.json");
+
+    S = *new SliderGroup(Alice::vec(50, 450, 0));
+    S.numSliders = 0;
+    S.addSlider(&threshold, "tv");// make a slider control for the variable called width;
+    S.sliders[0].minVal = -1; // myHeightField.zScale * -1;
+    S.sliders[0].maxVal = 1; //  myHeightField.zScale;
 
 }
 
@@ -1622,9 +1745,9 @@ void draw()
 
     restore3d();
 
-    visualizeInterpolatedSDFs(1,4, 12);
-    visualizeLatentInterpolatedSDFs_MLP (1, 4, 12);
-    visualizeInterpolatedSDFValues(1, 4, 12);
+    visualizeInterpolatedSDFs(1,4, 6);
+    visualizeLatentInterpolatedSDFs_MLP (1, 4, 6);
+    //visualizeInterpolatedSDFValues(1, 4, 12);
 }
 
 void keyPress(unsigned char k, int xm, int ym)

@@ -28,6 +28,9 @@
     <ClInclude Include="src\userSrc\heightField_NN.h">
       <Filter>IMP_SKETCHES</Filter>
     </ClInclude>
+    <ClInclude Include="src\userSrc\RhinoIO.h">
+      <Filter>IMP_SKETCHES</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="MVC">

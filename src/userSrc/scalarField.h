@@ -68,6 +68,7 @@ enum class SMinMode
 };
 
 #define OUT 1e6
+#define SF_RES 128
 
 class ScalarField2D
 {
@@ -76,24 +77,24 @@ public:
 
   
 
-    static  int RES = 150;
+    
     int div = 2; 
 
-    zVector gridPoints[RES][RES];
-    float field[RES][RES];
-    float field_normalized[RES][RES];
-    zVector gradient[RES][RES];
+    zVector gridPoints[SF_RES][SF_RES];
+    float field[SF_RES][SF_RES];
+    float field_normalized[SF_RES][SF_RES];
+    zVector gradient[SF_RES][SF_RES];
     std::vector<std::pair<zVector, zVector>> isolines;
     std::vector<std::vector<zVector>> allContours;
 
     ScalarField2D()
     {
         float span = 100.0f; // from -50 to +50
-        float step = span / (RES - 1); // spacing between grid points
+        float step = span / (SF_RES - 1); // spacing between grid points
 
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 float x = -50.0f + i * step;
                 float y = -50.0f + j * step;
@@ -109,8 +110,8 @@ public:
 
     void clearField()
     {
-        for (int i = 0; i < RES; i++)
-            for (int j = 0; j < RES; j++)
+        for (int i = 0; i < SF_RES; i++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 field[i][j] = field_normalized[i][j] = 0.0;
                 gradient[i][j] = zVector(0, 0, 0);
@@ -131,9 +132,9 @@ public:
 
     void addVoronoi( std::vector<zVector>& sites )
     {
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 zVector pt = gridPoints[i][j];
                 float minDist = 1e6f;
@@ -165,9 +166,9 @@ public:
 
     void addCircleSDF(zVector center, float radius , bool invertDistance = true)
     {
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 zVector pt = gridPoints[i][j];
                 float d = pt.distanceTo(center);
@@ -187,9 +188,9 @@ public:
         float c = cos(angleRadians);
         float s = sin(angleRadians);
 
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 zVector p = gridPoints[i][j] - center;
 
@@ -216,9 +217,9 @@ public:
 
     void addCircleSDFs(vector<zVector> rbfCenters, float radius = 2.0)
     {
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 zVector p = gridPoints[i][j];
                 float d = p.distanceTo(rbfCenters[0]);
@@ -243,9 +244,9 @@ public:
     
     void unionWith( ScalarField2D& other)
     {
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 field[i][j] = std::min(field[i][j], other.field[i][j]);
             }
@@ -254,9 +255,9 @@ public:
 
     void intersectWith( ScalarField2D& other)
     {
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 field[i][j] = std::max(field[i][j], other.field[i][j]);
             }
@@ -265,9 +266,9 @@ public:
 
     void subtract( ScalarField2D& other)
     {
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 field[i][j] = std::max(field[i][j], -other.field[i][j]);
             }
@@ -333,9 +334,9 @@ public:
                 return std::max(k, std::min(a, b)) - l;
             };
 
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 float a = field[i][j];
                 float b = other.field[i][j];
@@ -383,9 +384,9 @@ public:
 
     void clampNeg()
     {
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 field[i][j] = (field[i][j] < 0) ? field[i][j] * -1 : 0;
             }
@@ -393,9 +394,9 @@ public:
     }
     void clampPos()
     {
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 field[i][j] = std::clamp(field[i][j], 0.f, 1.f);
             }
@@ -405,9 +406,9 @@ public:
     void normalise()
     {
         float mn = 1e6f, mx = -1e6f;
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 if (fabs(field[i][j] - OUT) < 1e-6)continue; //exclude outside
 
@@ -417,9 +418,9 @@ public:
         }
 
         float range = std::max(mx - mn, 1e-6f);
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 if (fabs(field[i][j] - OUT) < 1e-6)continue; //exclude outside
 
@@ -430,8 +431,8 @@ public:
     void minMax( float &mn, float &mx)
     {
         mn = 1e6; mx = -mn;
-        for (int i = 0; i < RES; ++i)
-            for (int j = 0; j < RES; ++j)
+        for (int i = 0; i < SF_RES; ++i)
+            for (int j = 0; j < SF_RES; ++j)
             {
                 float v = field[i][j];
                 mn = min(v, mn);
@@ -444,8 +445,8 @@ public:
         float minVal[2] = { 1e6f,  1e6f };
         float maxVal[2] = { -1e6f, -1e6f };
 
-        for (int i = 0; i < RES; ++i)
-            for (int j = 0; j < RES; ++j)
+        for (int i = 0; i < SF_RES; ++i)
+            for (int j = 0; j < SF_RES; ++j)
             {
                 float v = field[i][j];
                 int idx = (v >= 0.0f) ? 0 : 1;
@@ -458,8 +459,8 @@ public:
             std::max(maxVal[1] - minVal[1], 1e-6f)
         };
 
-        for (int i = 0; i < RES; ++i)
-            for (int j = 0; j < RES; ++j)
+        for (int i = 0; i < SF_RES; ++i)
+            for (int j = 0; j < SF_RES; ++j)
                 field[i][j] = (field[i][j] >= 0.0f)
                 ? ofMap(field[i][j], minVal[0], maxVal[0], 0.0f, targetMax)
                 : ofMap(field[i][j], minVal[1], maxVal[1], targetMin, 0.0f);
@@ -664,10 +665,10 @@ public:
 
         auto gradAt = [&](int i, int j, float& gx, float& gy)
             {
-                 int iN = clampi(i - 1, 0, RES - 1);
-                 int iS = clampi(i + 1, 0, RES - 1);
-                 int jW = clampi(j - 1, 0, RES - 1);
-                 int jE = clampi(j + 1, 0, RES - 1);
+                 int iN = clampi(i - 1, 0, SF_RES - 1);
+                 int iS = clampi(i + 1, 0, SF_RES - 1);
+                 int jW = clampi(j - 1, 0, SF_RES - 1);
+                 int jE = clampi(j + 1, 0, SF_RES - 1);
 
                  float uC = field[i][j];
                 float uN = field[iN][j];
@@ -688,14 +689,14 @@ public:
                 gy = 0.5f * (uS - uN);
             };
 
-        std::vector<float> next(RES * RES, 0.0f);
-        auto NX = [&](int i, int j) -> float& { return next[i * RES + j]; };
+        std::vector<float> next(SF_RES * SF_RES, 0.0f);
+        auto NX = [&](int i, int j) -> float& { return next[i * SF_RES + j]; };
 
         for (int it = 0; it < iterations; ++it)
         {
-            for (int i = 0; i < RES; ++i)
+            for (int i = 0; i < SF_RES; ++i)
             {
-                for (int j = 0; j < RES; ++j)
+                for (int j = 0; j < SF_RES; ++j)
                 {
                      float uC = field[i][j];
 
@@ -705,10 +706,10 @@ public:
                         continue;
                     }
 
-                     int iN = clampi(i - 1, 0, RES - 1);
-                     int iS = clampi(i + 1, 0, RES - 1);
-                     int jW = clampi(j - 1, 0, RES - 1);
-                     int jE = clampi(j + 1, 0, RES - 1);
+                     int iN = clampi(i - 1, 0, SF_RES - 1);
+                     int iS = clampi(i + 1, 0, SF_RES - 1);
+                     int jW = clampi(j - 1, 0, SF_RES - 1);
+                     int jE = clampi(j + 1, 0, SF_RES - 1);
 
                     // neighbor samples (OUT-safe)
                     float uN = safeSample(i, j, iN, j, uC);
@@ -782,9 +783,9 @@ public:
             }
 
             // Commit
-            for (int i = 0; i < RES; ++i)
+            for (int i = 0; i < SF_RES; ++i)
             {
-                for (int j = 0; j < RES; ++j)
+                for (int j = 0; j < SF_RES; ++j)
                 {
                     field[i][j] = NX(i, j);
                 }
@@ -804,16 +805,16 @@ public:
                 return (v < lo) ? lo : (v > hi) ? hi : v;
             };
 
-        std::vector<float> next(RES * RES, 0.0f);
+        std::vector<float> next(SF_RES * SF_RES, 0.0f);
         auto F = [&](int i, int j) -> float& { return field[i][j]; };
-        auto NX = [&](int i, int j) -> float& { return next[i * RES + j]; };
+        auto NX = [&](int i, int j) -> float& { return next[i * SF_RES + j]; };
 
         for (int it = 0; it < iterations; ++it)
         {
             // Jacobi step
-            for (int i = 0; i < RES; ++i)
+            for (int i = 0; i < SF_RES; ++i)
             {
-                for (int j = 0; j < RES; ++j)
+                for (int j = 0; j < SF_RES; ++j)
                 {
                      float uC = F(i, j);
 
@@ -824,10 +825,10 @@ public:
                     }
 
                     // Neumann-ish boundaries (clamped sampling)
-                     int iN = clampi(i - 1, 0, RES - 1);
-                     int iS = clampi(i + 1, 0, RES - 1);
-                     int jW = clampi(j - 1, 0, RES - 1);
-                     int jE = clampi(j + 1, 0, RES - 1);
+                     int iN = clampi(i - 1, 0, SF_RES - 1);
+                     int iS = clampi(i + 1, 0, SF_RES - 1);
+                     int jW = clampi(j - 1, 0, SF_RES - 1);
+                     int jE = clampi(j + 1, 0, SF_RES - 1);
 
                     float uN = F(iN, j);
                     float uS = F(iS, j);
@@ -849,9 +850,9 @@ public:
             }
 
             // Commit
-            for (int i = 0; i < RES; ++i)
+            for (int i = 0; i < SF_RES; ++i)
             {
-                for (int j = 0; j < RES; ++j)
+                for (int j = 0; j < SF_RES; ++j)
                 {
                     F(i, j) = NX(i, j);
                 }
@@ -868,9 +869,9 @@ public:
 
      void computeGradient()
     {
-        for (int i = 1; i < RES - 1; i++)
+        for (int i = 1; i < SF_RES - 1; i++)
         {
-            for (int j = 1; j < RES - 1; j++)
+            for (int j = 1; j < SF_RES - 1; j++)
             {
                 float dx = (field[i + 1][j] - field[i - 1][j]) * 0.5f;
                 float dy = (field[i][j + 1] - field[i][j - 1]) * 0.5f;
@@ -882,7 +883,7 @@ public:
      float sampleAt(float x, float y)
      {
          float span = 100.0f;
-         float step = span / (ScalarField2D::RES - 1);
+         float step = span / (SF_RES - 1);
 
          float fx = (x + 50.0f) / step;
          float fy = (y + 50.0f) / step;
@@ -893,7 +894,7 @@ public:
          float tx = fx - i;
          float ty = fy - j;
 
-         if (i < 0 || j < 0 || i >= ScalarField2D::RES - 1 || j >= ScalarField2D::RES - 1)
+         if (i < 0 || j < 0 || i >= SF_RES - 1 || j >= SF_RES - 1)
              return 1e6f;
 
          float f00 = field[i][j];
@@ -958,9 +959,9 @@ public:
         isolines.clear();
         
 
-        for (int i = 0; i < RES - 1; i++)
+        for (int i = 0; i < SF_RES - 1; i++)
         {
-            for (int j = 0; j < RES - 1; j++)
+            for (int j = 0; j < SF_RES - 1; j++)
             {
                 zVector quadPts[4] = {
                     gridPoints[i][j],
@@ -990,9 +991,9 @@ public:
 
     void computeIsocontours(float threshold, std::vector<std::pair<zVector, zVector>>& output)
     {
-        for (int i = 0; i < RES - 1; i++)
+        for (int i = 0; i < SF_RES - 1; i++)
         {
-            for (int j = 0; j < RES - 1; j++)
+            for (int j = 0; j < SF_RES - 1; j++)
             {
                 zVector p[4] = {
                     gridPoints[i][j],
@@ -1192,9 +1193,9 @@ public:
         Alice::vec pt;
         normalise();
         glPointSize(2);
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 float f = field[i][j];
                 float r, g, b;
@@ -1245,9 +1246,9 @@ public:
 
     void printField()
     {
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 float f = field[i][j];
                 float r, g, b;
