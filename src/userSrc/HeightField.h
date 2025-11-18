@@ -15,7 +15,7 @@
 using namespace zSpace;
 
 #include "scalarField.h"
-#include "parcel.h"
+#include "parcel_vector.h"
 
 
 
@@ -139,7 +139,7 @@ public:
 // Assumes members: RES, gridMin, gridMax, field[RES][RES], samples {x,y,z}
 // Improves fit to dotted iso-samples while remaining smooth between contours.
 
-    void reructScreenedPoisson
+    void reconstruct_screened_poisson
     (
         double alpha_base = 0.05,
         double sigma_cells = 1.25,   // Gaussian splat radius in grid cells
@@ -151,8 +151,8 @@ public:
     {
         if (samples.empty()) return;
 
-         int nx = RES;
-         int ny = RES;
+         int nx = SF_RES;
+         int ny = SF_RES;
         zVector gridMin(-50, -50, 0);
         zVector gridMax(50, 50, 0);
 
@@ -377,9 +377,9 @@ public:
 
     void interpolateToGrid()
     {
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 zVector gp = gridPoints[i][j];
                 float num = 0.0f;
@@ -416,8 +416,8 @@ public:
         int    minNeighbors = 6,
         double eps = 1e-12)
     {
-         int nx = RES;
-         int ny = RES;
+         int nx = SF_RES;
+         int ny = SF_RES;
 
         // world grid spacing
         zVector gridMax(50, 50, 0);
@@ -590,9 +590,9 @@ public:
 
         /// store interpolated min-max
         float mn = 1e6f, mx = -1e6f;
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 if (fabs(field[i][j] - OUT) < 1e-6)continue; //exclude outside
 
@@ -610,136 +610,397 @@ public:
         rescaleFieldToRange(0, 1);
     }
 
+
+
+    inline int Mod(int a, int n)
+    {
+        a = a % n;
+        return (a < 0) ? a + n : a;
+    }
+
     void trimFieldWithPolygon(vector<zVector>& poly)
     {
-        for (int i = 0; i < RES; i++)
-            for (int j = 0; j < RES; j++)
-                if (!pointInsidePolygon(gridPoints[i][j], poly)) field[i][j] = 1;
+        if (poly.size() < 3)return;
+
+        zVector centroid;
+        for (auto& p : poly)centroid += p; 
+        centroid /= poly.size();
+
+
+        float area = 0.0f;
+        for (int i = 0; i < poly.size(); i++)
+        {
+            int nxt = Mod(i + 1, poly.size());
+
+            area +=
+                ((poly[nxt] - poly[i]) ^
+                    (centroid - poly[i])).length() * 0.5f;
+        }
+
+        if (area < 1e-2 || std::isnan(area)) return;
+
+
+        for (int i = 0; i < SF_RES; i++)
+            for (int j = 0; j < SF_RES; j++)
+                if (!pointInsidePolygon(gridPoints[i][j], poly)) field[i][j] = 1e4;
 
     }
 
-    // --------------------------
+    //void scale_feild_values_within(zVector *pts, int N)
+    //{
+    //    for (int i = 0; i < SF_RES; i++)
+    //        for (int j = 0; j < SF_RES; j++)
+    //            if (!insidePOly) field[i][j] = 1e4;
+
+    //}
+
+    // -------------------------- PATH FINDING
+
+    void scale_scalar_within_polygons( vector<vector<zVector>> polygons)
+    {
+        for (int i = 0; i < SF_RES; i++)
+            for (int j = 0; j < SF_RES; j++)
+            {
+                for( auto &poly : polygons)
+                 if ( pointInsidePolygon(gridPoints[i][j], poly)) field[i][j] *= 1e4;
+            }
+                
+    }
+
+    //------------------------------------------------------------
+    // PATHFINDING SUPPORT STRUCTURES
+    //------------------------------------------------------------
+    struct Node
+    {
+        int x, y;
+        float cost, heuristic;
+        Node* parent;
+
+        Node(int _x, int _y, float _c, float _h, Node* _p)
+            : x(_x), y(_y), cost(_c), heuristic(_h), parent(_p)
+        {}
+    };
+
+    struct CompareNode
+    {
+        bool operator()(Node* a, Node* b)
+        {
+            return (a->cost + a->heuristic) > (b->cost + b->heuristic);
+        }
+    };
+
+    //------------------------------------------------------------
+    // MAPPING FUNCTIONS
+    //------------------------------------------------------------
+    inline int worldToGrid(float x)
+    {
+        // world: [-50,50] → grid index: [0, SF_RES-1]
+        float t = (x + 50.0f) / 100.0f;
+        t = std::clamp(t, 0.0f, 1.0f);
+        return int(t * (SF_RES - 1));
+    }
+
+    inline float gridToWorld(int i)
+    {
+        // grid index: [0, SF_RES-1] → world [-50,50]
+        float t = float(i) / float(SF_RES - 1);
+        return -50.0f + t * 100.0f;
+    }
+
+
+
+    //------------------------------------------------------------
+    // A* SHORTEST PATH ON field[][] USING 8-NEIGHBORS
+    //------------------------------------------------------------
+
+    std::vector<zVector> lastShortestPath;
+
+    void findShortestPath(zVector start, zVector end)
+    {
+        lastShortestPath.clear();
+
+        auto heuristic = [](int x1, int y1, int x2, int y2)
+            {
+                return sqrt((x2 - x1) * (x2 - x1)
+                    + (y2 - y1) * (y2 - y1));
+            };
+
+        // --------------------------------------------------------
+        // MAP WORLD TO GRID INDICES
+        // --------------------------------------------------------
+        int sx = worldToGrid(start.x);
+        int sy = worldToGrid(start.y);
+        int ex = worldToGrid(end.x);
+        int ey = worldToGrid(end.y);
+
+        // clamp in case of rounding edge cases
+        sx = std::clamp(sx, 0, SF_RES - 1);
+        sy = std::clamp(sy, 0, SF_RES - 1);
+        ex = std::clamp(ex, 0, SF_RES - 1);
+        ey = std::clamp(ey, 0, SF_RES - 1);
+
+        std::priority_queue<Node*, std::vector<Node*>, CompareNode> openSet;
+        std::unordered_map<int, Node*> visited;
+
+        Node* startNode = new Node(sx, sy, 0.0f, heuristic(sx, sy, ex, ey), nullptr);
+        openSet.push(startNode);
+
+        // 8-connected grid
+        int directions[8][2] =
+        {
+            { 1,  0}, {-1,  0}, { 0,  1}, { 0, -1},
+            { 1,  1}, { 1, -1}, {-1,  1}, {-1, -1}
+        };
+
+        // --------------------------------------------------------
+        // A* LOOP
+        // --------------------------------------------------------
+        while (!openSet.empty())
+        {
+            Node* curr = openSet.top();
+            openSet.pop();
+
+            // goal reached
+            if (curr->x == ex && curr->y == ey)
+            {
+                Node* v = curr;
+                while (v)
+                {
+                    float wx = gridToWorld(v->x);
+                    float wy = gridToWorld(v->y);
+                    float wz = gridPoints[v->x][v->y].z;
+
+                    lastShortestPath.push_back(zVector(wx, wy, wz));
+                    v = v->parent;
+                }
+
+                std::reverse(lastShortestPath.begin(), lastShortestPath.end());
+                return;
+            }
+
+            int key = curr->x * SF_RES + curr->y;
+            if (visited.count(key)) continue;
+            visited[key] = curr;
+
+            // explore neighbors
+            for (auto& d : directions)
+            {
+                int nx = curr->x + d[0];
+                int ny = curr->y + d[1];
+
+                if (nx < 0 || nx >= SF_RES || ny < 0 || ny >= SF_RES)
+                    continue;
+
+                // diagonal costs sqrt(1^2 + 1^2)
+                bool diag = (d[0] != 0 && d[1] != 0);
+                float stepCost = diag ? 1.41421356f : 1.0f;
+
+                float costHere = field[nx][ny];
+                float newCost = curr->cost + stepCost + costHere;
+                
+                //float costHere = field[nx][ny];
+                //if (costHere < 1e-6f) costHere = 1e-6f;   // avoid divide-by-zero
+
+                //float invCost = 1.0f / costHere;
+                //float newCost = curr->cost + stepCost + invCost;
+
+
+                openSet.push(new Node(
+                    nx, ny,
+                    newCost,
+                    heuristic(nx, ny, ex, ey),
+                    curr
+                ));
+            }
+        }
+
+        printf("No path found. Path length = %i\n", lastShortestPath.size());
+    }
+
+
+
+    //------------------------------------------------------------
+    // SMOOTHING
+    //------------------------------------------------------------
+    void smoothPath()
+    {
+        if (lastShortestPath.size() < 3) return;
+
+        std::vector<zVector> out = lastShortestPath;
+
+        for (size_t i = 1; i < lastShortestPath.size() - 1; i++)
+        {
+            out[i] =
+                lastShortestPath[i - 1] * 0.3f +
+                lastShortestPath[i] * 0.4f +
+                lastShortestPath[i + 1] * 0.3f;
+        }
+
+        lastShortestPath = out;
+    }
+
+    void smoothPath(std::vector<zVector>& path)
+    {
+        if (path.size() < 3) return;
+
+        std::vector<zVector> out = path;
+
+        for (size_t i = 1; i < path.size() - 1; i++)
+        {
+            out[i] =
+                path[i - 1] * 0.3f +
+                path[i] * 0.4f +
+                path[i + 1] * 0.3f;
+        }
+
+        path = out;
+    }
+
+
+    //------------------------------------------------------------
+    // DRAW PATH
+    //------------------------------------------------------------
+    void drawPth(std::vector<zVector>& path)
+    {
+        if (path.empty()) return;
+
+        glColor3f(0, 0, 1);
+        for (size_t i = 0; i < path.size() - 1; i++)
+        {
+            drawLine(zVecToAliceVec(path[i]), zVecToAliceVec(path[i + 1]));
+        }
+    }
+
+
+    //------------------------------------------------------------
+    // VECTOR FIELD FROM HEIGHT FIELD
+    //------------------------------------------------------------
+
+
+    //------------------------------------------------------------
+    // STREAMLINES (OPTIONAL, MATCHING LVM STRUCTURE)
+    //------------------------------------------------------------
+    void drawStreamlinesFromSeeds
+    (
+        const vector<zVector>& seeds,
+        int numDirections = 1,
+        float stepSize = 0.5f,
+        int maxSteps = 400
+    )
+    {
+        vector<vector<zVector>> streamlines;
+
+        // ------------------------------------------------------------
+        // For each seed point (in WORLD space)
+        // ------------------------------------------------------------
+        for (auto& seedWS : seeds)
+        {
+            // --------------------------------------------------------
+            // 16 radial directions (or user-defined)
+            // --------------------------------------------------------
+            for (int d = 0; d < numDirections; d++)
+            {
+                float angle = float(d) / float(numDirections) * TWO_PI;
+                zVector initialDir(cos(angle), sin(angle), 0);
+
+                // Start RK2 integration
+                zVector pWS = seedWS;
+                vector<zVector> path;
+                path.push_back(pWS);
+
+                // ----------------------------------------------------
+                // RK2 Streamline Integration
+                // ----------------------------------------------------
+                for (int s = 0; s < maxSteps; s++)
+                {
+                    // ==================================================
+                    // Step 1: Sample vector at pWS
+                    // ==================================================
+                    int ix = worldToGrid(pWS.x);
+                    int iy = worldToGrid(pWS.y);
+
+                    // Grid vector
+                    zVector v1 = gradient[ix][iy];
+
+                    if (v1.length() < 1e-6f)
+                    {
+                        // fallback to radial
+                        v1 = initialDir;
+                    }
+
+                    v1.normalize();
+                    v1 *= stepSize;
+
+                    // ==================================================
+                    // Step 2: Midpoint (RK2 predictor)
+                    // ==================================================
+                    zVector midWS = pWS + v1 * 0.5f;
+
+                    int mx = worldToGrid(midWS.x);
+                    int my = worldToGrid(midWS.y);
+
+                    zVector v2 = gradient[mx][my];
+                    if (v2.length() < 1e-6f)
+                        v2 = initialDir;
+
+                    v2.normalize();
+                    v2 *= stepSize;
+
+                    // ==================================================
+                    // Step 3: Corrector
+                    // ==================================================
+                    pWS = pWS + v2;
+
+                    // Stop if outside world range [-50, 50]
+                    if (pWS.x < -50 || pWS.x > 50 || pWS.y < -50 || pWS.y > 50)
+                        break;
+
+                    path.push_back(pWS);
+                }
+
+                streamlines.push_back(path);
+            }
+        }
+
+        // ------------------------------------------------------------
+        // Draw
+        // ------------------------------------------------------------
+        glColor3f(0, 1, 0);
+        glLineWidth(3);
+
+        for (auto& stream : streamlines)
+        {
+            // Optional smoothing
+            for (int i = 0; i < 3; i++)
+                smoothPath(stream);
+
+            for (size_t i = 0; i + 1 < stream.size(); i++)
+            {
+                drawLine(zVecToAliceVec(stream[i]),
+                    zVecToAliceVec(stream[i + 1]));
+            }
+        }
+
+        glLineWidth(1);
+    }
+
+
+
+    /// ----------------------------
+    
 
     void setGridPointHeights()
     {
         if (samples.empty()) return;
 
-        for (int i = 0; i < RES; i++)
+        for (int i = 0; i < SF_RES; i++)
         {
-            for (int j = 0; j < RES; j++)
+            for (int j = 0; j < SF_RES; j++)
             {
                 gridPoints[i][j].z = ofMap(field[i][j], -1, 1, -zScale, zScale); ;// ofMap(field_normalized[i][j], 0, 1, -zScale, zScale);
             }
         }
     }
-
-
-    ///
-
-    void computeShortestPath_AStar(
-         zVector& start,
-         zVector& goal,
-        std::vector<zVector>& outPath,
-         std::vector<parcel>& plots
-    )
-    {
-        struct Node
-        {
-            int x, y;
-            float gCost, hCost;
-            Node* parent;
-            Node(int _x, int _y, float g, float h, Node* p = nullptr)
-                : x(_x), y(_y), gCost(g), hCost(h), parent(p) {}
-        };
-
-        struct CompareNode
-        {
-            bool operator()(Node* a, Node* b)
-            {
-                return (a->gCost + a->hCost) > (b->gCost + b->hCost);
-            }
-        };
-
-        auto heuristic = [](int x1, int y1, int x2, int y2)
-            {
-                return sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
-            };
-
-        auto pointInsideAnyPolygon = [&]( zVector& p)
-            {
-                for ( auto& plot : plots)
-                {
-                    if (pointInsidePolygon(plot.parcelPoints, 50, _cast<zVector&>(p), 0))
-                        return true;
-                }
-                return false;
-            };
-
-        outPath.clear();
-        int sx = std::clamp((int)std::round(start.x), 0, RES - 1);
-        int sy = std::clamp((int)std::round(start.y), 0, RES - 1);
-        int gx = std::clamp((int)std::round(goal.x), 0, RES - 1);
-        int gy = std::clamp((int)std::round(goal.y), 0, RES - 1);
-
-        std::priority_queue<Node*, std::vector<Node*>, CompareNode> openSet;
-        std::unordered_map<int, Node*> visited;
-
-        Node* startNode = new Node(sx, sy, 0.0f, heuristic(sx, sy, gx, gy));
-        openSet.push(startNode);
-
-        int dirs[8][2] = {
-            {1, 0}, {-1, 0}, {0, 1}, {0, -1},
-            {1, 1}, {-1, -1}, {1, -1}, {-1, 1}
-        };
-
-        while (!openSet.empty())
-        {
-            Node* current = openSet.top();
-            openSet.pop();
-
-            if (current->x == gx && current->y == gy)
-            {
-                // reruct path
-                for (Node* n = current; n != nullptr; n = n->parent)
-                    outPath.push_back(zVector(n->x, n->y, 0));
-
-                std::reverse(outPath.begin(), outPath.end());
-                break;
-            }
-
-            int key = current->x * RES + current->y;
-            if (visited.count(key)) continue;
-            visited[key] = current;
-
-            for (auto& d : dirs)
-            {
-                int nx = current->x + d[0];
-                int ny = current->y + d[1];
-                if (nx < 0 || ny < 0 || nx >= RES || ny >= RES) continue;
-
-                float fieldCost = field[nx][ny];
-                if (std::isnan(fieldCost)) fieldCost = 1.0f;
-
-                float polyPenalty = pointInsideAnyPolygon(zVector(nx, ny, 0)) ? 50.0f : 0.0f;
-                float stepCost = 1.0f + std::fabs(fieldCost) + polyPenalty;
-
-                Node* neighbor = new Node(
-                    nx, ny,
-                    current->gCost + stepCost,
-                    heuristic(nx, ny, gx, gy),
-                    current
-                );
-
-                openSet.push(neighbor);
-            }
-        }
-
-        // cleanup visited nodes
-        for (auto& kv : visited)
-            delete kv.second;
-    }
-
-
 
     void drawSamplePoints()
     {
@@ -760,6 +1021,19 @@ public:
         }
         glEnd();
         glPointSize(1);
+    }
+
+    void drawPath()
+    {
+        if (!lastShortestPath.empty())
+        {
+            glColor3f(0, 0, 1);
+            for (size_t i = 0; i < lastShortestPath.size() - 1; i++)
+            {
+                drawLine(zVecToAliceVec(lastShortestPath[i]), zVecToAliceVec(lastShortestPath[i + 1]));
+            }
+        }
+
     }
 
 };

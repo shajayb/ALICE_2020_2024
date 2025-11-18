@@ -1745,8 +1745,8 @@ void draw()
 
     restore3d();
 
-    visualizeInterpolatedSDFs(1,4, 6);
-    visualizeLatentInterpolatedSDFs_MLP (1, 4, 6);
+    visualizeInterpolatedSDFs(0,3, 6);
+    visualizeLatentInterpolatedSDFs_MLP (0, 3, 6);
     //visualizeInterpolatedSDFValues(1, 4, 12);
 }
 

@@ -1,3 +1,5 @@
+#pragma once
+
 #define _PARCEL_
 #ifdef _PARCEL_
 
@@ -74,9 +76,9 @@
 
 #define nPoly 75
 #define num_centers 60
-double width = 1.0;
+double width_parcel = 1.0;
 
-int insidePolygon(zVector* polygon, int N, zVector& p, int bound)
+int is_point_inside_polygon(zVector* polygon, int N, zVector& p, int bound)
 {
 	//cross points count of x
 	int __count = 0;
@@ -238,7 +240,7 @@ public:
 	zVector centerOfBox;
 	float areaOfBox;
 
-	zVector boxPoints[nPoly];
+	zVector polyPoints[nPoly];
 	zVector boxPointsNormals[nPoly];
 
 	zVector centerPoints[num_centers];
@@ -269,7 +271,7 @@ public:
 			float x = r * sin(float(i) * inc);
 			float y = r * cos(float(i) * inc);
 
-			boxPoints[i] = zVector(x, y, 0);
+			polyPoints[i] = zVector(x, y, 0);
 			boolMove[i] = true;
 		}
 
@@ -299,7 +301,7 @@ public:
 
 			for (int i = 0; i < nPoints; i++)
 			{
-				boxPoints[i] = vertexPositions[i];
+				polyPoints[i] = vertexPositions[i];
 				boolMove[i] = true;
 			}
 		}
@@ -310,7 +312,7 @@ public:
 		nPoints = polygon.size();
 		for (int i = 0; i < nPoints; i++)
 		{
-			boxPoints[i] = polygon[i];
+			polyPoints[i] = polygon[i];
 			boolMove[i] = true;
 		}
 	}
@@ -335,7 +337,7 @@ public:
 		TM.inverse();
 
 		for (int i = 0; i < nPoints; i++)
-			boxPoints[i] = boxPoints[i] * TM;
+			polyPoints[i] = polyPoints[i] * TM;
 	}
 
 	int Mod(int a, int n)
@@ -366,11 +368,11 @@ public:
 		{
 			int next = Mod(i + 1, nPoints);// (i + 1) % nPoints;
 			int prev = Mod(i - 1, nPoints); //(nPoly - 1 + i) % nPoints;
-			zVector e1 = (boxPoints[i] - boxPoints[prev]) ^ zVector(0, 0, 1);
-			zVector e2 = (boxPoints[next] - boxPoints[i]) ^ zVector(0, 0, 1);;
+			zVector e1 = (polyPoints[i] - polyPoints[prev]) ^ zVector(0, 0, 1);
+			zVector e2 = (polyPoints[next] - polyPoints[i]) ^ zVector(0, 0, 1);;
 
 			zVector norm = ((e1 + e2) * 0.5);
-			zVector compareVec = boxPoints[i] - centerOfBox;
+			zVector compareVec = polyPoints[i] - centerOfBox;
 			if (norm * compareVec) norm *= -1;
 
 			norm.normalize();
@@ -384,7 +386,7 @@ public:
 		for (int i = 0; i < nPoints; i++)
 		{
 			int nxt = Mod(i + i, nPoints);
-			areaOfBox += ((boxPoints[nxt] - boxPoints[i]) ^ (centerOfBox - boxPoints[i])).length() * 0.5;
+			areaOfBox += ((polyPoints[nxt] - polyPoints[i]) ^ (centerOfBox - polyPoints[i])).length() * 0.5;
 
 		}
 
@@ -397,7 +399,7 @@ public:
 		zVector mean, eigenVals, eigenVecs[3];
 		//double wts[3];
 
-		mat.PCA(boxPoints, nPoints, mean, eigenVals, eigenVecs);
+		mat.PCA(polyPoints, nPoints, mean, eigenVals, eigenVecs);
 
 		for (int i = 0; i < 3; i++)
 		{
@@ -422,7 +424,7 @@ public:
 
 		u.normalize(); v.normalize(); w.normalize();
 		zVector c = centerOfBox;
-		v *= width;
+		v *= 1.0;// width_parcel;
 
 		//assign the values to the matrix
 		TM.col(0) << u.x, u.y, u.z, 1;
@@ -431,7 +433,7 @@ public:
 		TM.col(3) << c.x, c.y, c.z, 1;
 
 		for (int i = 0; i < nPoints; i++)
-			boxPoints[i] = boxPoints[i] * TM;
+			polyPoints[i] = polyPoints[i] * TM;
 
 		computeNormals();
 	}
@@ -443,14 +445,14 @@ public:
 		{
 			np = boxPointsNormals[i];
 
-			if (boolMove[i])boxPoints[i] += np;
+			if (boolMove[i])polyPoints[i] += np;
 
 			for (auto& parcel : AB)
 			{
 				if (parcel.id_u != id_u)
 					for (int j = 0; j < nPoints; j++)
 					{
-						float dist = boxPoints[i].distanceTo(parcel.boxPoints[j]);
+						float dist = polyPoints[i].distanceTo(parcel.polyPoints[j]);
 
 						if (dist < collisionRad)
 						{
@@ -474,21 +476,21 @@ public:
 		{
 			np = boxPointsNormals[i];
 
-			if (boolMove[i])boxPoints[i] += np;
+			if (boolMove[i])polyPoints[i] += np;
 
 			boolMove[i] = true; // reset;
 
 			//for (auto& parcel : AB)
 			{
 				//if (parcel.id_u != id_u)
-				int num_nbors = SG->getNeighBors(nborIds, boxPoints[i], collisionRad * 2);
+				int num_nbors = SG->getNeighBors(nborIds, polyPoints[i], collisionRad * 2);
 
 				/// collision test with vertices.
 				for (int j = 0; j < num_nbors; j++)
 				{
 					if (nborIds[j] >= (id_u * nPoints) && nborIds[j] < (id_u + 1) * nPoints)continue;
 
-					float dist = boxPoints[i].distanceTo(SG->positions[nborIds[j]]);
+					float dist = polyPoints[i].distanceTo(SG->positions[nborIds[j]]);
 
 					if (dist < collisionRad)boolMove[i] = false;
 
@@ -506,7 +508,7 @@ public:
 
 					np.normalize();
 					IntersectResult IR;
-					IntersectEdges(boxPoints[i], boxPoints[i] + np * collisionRad * 2, SG->positions[nborIds[j]], SG->positions[next_j], IR);
+					IntersectEdges(polyPoints[i], polyPoints[i] + np * collisionRad * 2, SG->positions[nborIds[j]], SG->positions[next_j], IR);
 
 					if (IR == INTERESECTING)
 					{
@@ -593,7 +595,7 @@ public:
 						int next_j = (j + 1) % nPoints;
 
 						IntersectResult IR;
-						zVector int_pt = IntersectEdges(boxPoints[i], boxPoints[nxt], otherBox.boxPoints[j], otherBox.boxPoints[next_j], IR);
+						zVector int_pt = IntersectEdges(polyPoints[i], polyPoints[nxt], otherBox.polyPoints[j], otherBox.polyPoints[next_j], IR);
 
 						if (IR == INTERESECTING)
 						{
@@ -605,20 +607,20 @@ public:
 						}
 
 						bool i_in, nxt_in;
-						i_in = insidePolygon(otherBox.boxPoints, nPoints, boxPoints[i], 0);
-						nxt_in = insidePolygon(otherBox.boxPoints, nPoly, boxPoints[nxt], 0);
+						i_in = is_point_inside_polygon(otherBox.polyPoints, nPoints, polyPoints[i], 0);
+						nxt_in = is_point_inside_polygon(otherBox.polyPoints, nPoly, polyPoints[nxt], 0);
 
 						zVector np = boxPointsNormals[i];
 
 						if (i_in)
 						{
-							boxPoints[i] -= boxPointsNormals[i];
+							polyPoints[i] -= boxPointsNormals[i];
 							boolMove[i] = false;
 
 						}
 						if (nxt_in)
 						{
-							boxPoints[nxt] -= boxPointsNormals[nxt];
+							polyPoints[nxt] -= boxPointsNormals[nxt];
 							boolMove[nxt] = false;
 						}
 
@@ -638,15 +640,15 @@ public:
 		for (int i = 0; i < nPoints; i++)
 		{
 			int nxt = Mod(i + 1, nPoints);
-			zVector edge = boxPoints[nxt] - boxPoints[i];
+			zVector edge = polyPoints[nxt] - polyPoints[i];
 			double displacement = edge.length() - restLength;
 
 			edge.normalize();
 			if (boolMove[i])
-				boxPoints[i] += edge * displacement * 0.4;
+				polyPoints[i] += edge * displacement * 0.4;
 
 			if (boolMove[nxt])
-				boxPoints[nxt] -= edge * displacement * 0.4;
+				polyPoints[nxt] -= edge * displacement * 0.4;
 		}
 
 	}
@@ -659,9 +661,9 @@ public:
 			int prev = Mod(i - 1, nPoints);// (i + nPoints - 1) % nPoints;
 			int next = Mod(i + 1, nPoints);// (i + 1) % nPoints;
 			if (!boolMove[i])
-				boxPoints[i] = boxPoints[prev] * 0.15 + boxPoints[i] * 0.7 + boxPoints[next] * 0.15;
+				polyPoints[i] = polyPoints[prev] * 0.15 + polyPoints[i] * 0.7 + polyPoints[next] * 0.15;
 			else
-				boxPoints[i] = boxPoints[prev] * 0.3 + boxPoints[i] * 0.4 + boxPoints[next] * 0.3;
+				polyPoints[i] = polyPoints[prev] * 0.3 + polyPoints[i] * 0.4 + polyPoints[next] * 0.3;
 		}
 
 	}
@@ -713,7 +715,7 @@ public:
 		for (int i = 0; i < plots.size(); i++)
 			if (forces[i].length() < 1)
 			{
-				if (insidePolygon(polygon.data(), polygon.size(), plots[i].centerOfBox, 0))
+				if (is_point_inside_polygon(polygon.data(), polygon.size(), plots[i].centerOfBox, 0))
 					plots[i].centerOfBox += forces[i];
 				
 				//centerPoints[i] -= forces[i] * 2;
@@ -766,7 +768,7 @@ public:
 			//drawLine and drawPoint accept data of type : Alice::vec
 			// so we need to convert zVector to Alice::vec;
 			glColor3f(1, 0, 0);
-			drawLine(zVecToAliceVec(boxPoints[i]), zVecToAliceVec(boxPoints[(i + 1) % nPoints]));
+			drawLine(zVecToAliceVec(polyPoints[i]), zVecToAliceVec(polyPoints[(i + 1) % nPoints]));
 			norm = boxPointsNormals[i];
 
 
@@ -774,8 +776,8 @@ public:
 			// so we need to convert zVector to Alice::vec;
 			(boolMove[i]) ? glColor3f(1, 0, 0) : glColor3f(0, 0, 1);
 
-			drawPoint(zVecToAliceVec(boxPoints[i]));
-			drawLine(zVecToAliceVec(boxPoints[i]), zVecToAliceVec(boxPoints[i] + norm));
+			drawPoint(zVecToAliceVec(polyPoints[i]));
+			drawLine(zVecToAliceVec(polyPoints[i]), zVecToAliceVec(polyPoints[i] + norm));
 
 
 			/*for (int i = 0; i < nPoints; i++)

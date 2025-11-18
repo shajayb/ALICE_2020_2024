@@ -99,7 +99,7 @@ bool loadPolygonFromFile( std::string& filePath, std::vector<zVector>& polygon)
 #include "scalarField.h"
 #include "HeightField.h"
 #include "heightField_NN.h"
-#include "parcel.h"
+#include "parcel_vector.h"
 
 
 void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
@@ -118,7 +118,7 @@ void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
         ON_3dPointArray pts;
         for (int i = 0; i < plot.nPoints; i++)
         {
-            zVector pt = plot.boxPoints[i];
+            zVector pt = plot.polyPoints[i];
 
             // reverse mapping: from destination back to source
             pt.x = cSrc.x + (pt.x - cDst.x) / scale * 1000;
@@ -190,7 +190,94 @@ void drawText(string& str, float x = 50, float y = 100)
 }
 
 
+// ------------------------------------------------------------
+// Shuffle helper (as given)
+// ------------------------------------------------------------
+void shuffleSDFSamplePoints(std::vector<sdfSamples>& pts)
+{
+    static std::random_device rd;
+    static std::mt19937 g(rd());
 
+    std::shuffle(pts.begin(), pts.end(), g);
+}
+
+// ------------------------------------------------------------
+// SGD training step: shuffle sdfSamplePoints + run your train logic
+// ------------------------------------------------------------
+void trainSGD(heightfieldNN& nn, vector<float> &dummyInput, vector<float>& dummyTarget, vector<float>& output, double &prevLoss, float& learningRate)
+{
+    if (nn.sdfSamplePoints.empty())
+    {
+        printf("ERROR: sdfSamplePoints is empty. Call generateSDFSamplePointsFromPolygon() first.\n");
+        return;
+    }
+
+    // ----------------------------------
+    // 1. Shuffle the SDF sample points
+    // ----------------------------------
+    shuffleSDFSamplePoints(nn.sdfSamplePoints);
+
+    // ----------------------------------
+    // 2. Forward pass using dummyInput
+    // ----------------------------------
+    if (dummyInput.size() != nn.inputDim)
+    {
+        dummyInput.clear();
+        dummyInput.resize(nn.inputDim, 0.0f);   // zero input or fill with noise
+    }
+
+    std::vector<float> y_pred = nn.forward(dummyInput);
+
+    // ----------------------------------
+    // 3. Compute loss
+    // ----------------------------------
+    float loss = nn.computeLoss(y_pred, dummyTarget);
+
+    // ----------------------------------
+    // 4. Compute gradient
+    // ----------------------------------
+    std::vector<float> grad;
+    nn.computeGradient(dummyInput, dummyTarget, grad);
+
+    // ----------------------------------
+    // 5. Learning-rate adaptation + backward update
+    // ----------------------------------
+
+    printf(" %.4f,%.4f \n", fabs(loss - prevLoss), learningRate);
+
+    if (fabs(loss - prevLoss) < 1e-2) learningRate *= 1.1;
+
+    learningRate = ofClamp(learningRate, 1e-2, 0.95);
+
+    nn.backward(grad, learningRate);
+
+    // ----------------------------------
+    // 6. Update output + debug print
+    // ----------------------------------
+    output = y_pred;
+
+    printf("Loss: %.8f | Output: [", loss);
+    printf("]\n");
+
+    prevLoss = loss;
+}
+
+// ------------------------------------------------------------
+// shortest path helper 
+// -
+void drawShortestPaths(vector< vector<zVector> > &allPaths)
+{
+    for( auto &path : allPaths)
+    if (!path.empty())
+    {
+        glColor3f(0, 0, 1);
+        for (size_t i = 0; i < path.size() - 1; i++)
+        {
+            drawLine(zVecToAliceVec(path[i]), zVecToAliceVec(path[i + 1]));
+        }
+    }
+
+}
 // ------------------------- APP ----------------------------------
 // ------------------------- - ----------------------------------
 // ------------------------- - ----------------------------------
@@ -205,7 +292,7 @@ vector<float> output;
 vector<float> dummyInput = { 1.0f };
 std::vector<float> dummyTarget = { 1.0f };; // unused
 
-float learningRate = 0.1f;
+float learningRate = 0.5f;
 float zRangeMin;
 std::vector<zVector> polygon;
 
@@ -214,6 +301,10 @@ std::vector<zVector> polygon;
 vector<parcel> plots;
 parcel plot;
 spaceGrid SG;
+
+//--- paths
+
+vector< vector<zVector> > shortestPaths;
 
 // -- app
 
@@ -241,7 +332,7 @@ void setup()
     myHeightField2 = *new HeightField2D();
 
     myHeightField.clearField();
-    myHeightField.readSamplesAndInterpolate("data/cabins_site.txt");
+    myHeightField.readSamplesAndInterpolate(string("data/cabins_site.txt"));
     zRangeMin = myHeightField.zMin;
 
     myHeightField1.addCircleSDF(zVector(0, 0, 0), 4);
@@ -250,7 +341,7 @@ void setup()
     // ----------- terrain trim
 
     polygon.clear();
-    loadPolygonFromFile("data/terrain_boundary_poly.txt", polygon);
+    loadPolygonFromFile(string("data/terrain_boundary_poly.txt"), polygon);
     myHeightField.rescalePoints(polygon);
     myHeightField.trimFieldWithPolygon(polygon);
     
@@ -310,7 +401,7 @@ void setup()
 
 void update(int value)
 {
-    if ( compute ) keyPress('t', 0, 0);
+    if ( compute ) keyPress('l', 0, 0);
 }
 
 void draw()
@@ -321,11 +412,13 @@ void draw()
 
     // ------ imported heightfield and sample points 
 
+
     myHeightField.drawSamplePoints();
-    //myHeightField.drawFieldPoints(false, false);
+    
 
     //myHeightField.computeGradient();
    // myHeightField.drawFieldPoints(true, false);
+
 
 
 
@@ -335,9 +428,15 @@ void draw()
     for (auto& parcel : plots)parcel.display();
 
     wireFrameOn();
-        SG.drawBuckets();
+        //SG.drawBuckets();
         //SG.drawParticlesInBuckets();
     wireFrameOff();
+
+    // -- paths
+       // myHeightField1.drawPath();
+    myHeightField1.drawFieldPoints(false, false);
+    glLineWidth(5);
+    drawShortestPaths(shortestPaths);
 
    // ----------------------- nn
   
@@ -347,6 +446,11 @@ void draw()
 
    std::vector<Pose2D> poses;
    nn.extractPoses(output, poses, true);
+   //
+   /*vector<zVector> centers;
+   for( auto &pose : poses)centers.push_back(pose.c);
+   myHeightField1.drawStreamlinesFromSeeds(centers);*/
+   //
 
    glPointSize(5);
    glColor3f(0, 0, 0);
@@ -427,18 +531,56 @@ void draw()
 
 }
 
+int n = 0; 
 
 
 
 void keyPress(unsigned char k, int xm, int ym)
 {
-    if (k == 'g')
+   
+    if (k == 'g') // ----------paths
     {
-        gradPt = nn.sdfSample_centroid + zVector(ofRandom(-5, 5), ofRandom(-5, 5), 0);
+        myHeightField1.clearField();
+        for (int i = 0; i < SF_RES; i++)
+            for (int j = 0; j < SF_RES; j++)
+                myHeightField1.field[i][j] = myHeightField.field[i][j];
 
-        grad = myHeightField.gradientAt( gradPt );
-        grad.normalize();
-       grad *= 3; 
+        myHeightField1.trimFieldWithPolygon(nn.polygon);
+
+        std::vector<Pose2D> poses;
+        nn.extractPoses(output, poses, true);
+
+
+        //--
+        vector<vector<zVector>> polys;
+        for (auto& parcel : plots)
+            if( pointInsidePolygon(parcel.centerOfBox,nn.polygon) ) polys.push_back(parcel.polyPoints);
+        myHeightField1.scale_scalar_within_polygons(polys);
+
+        //
+        shortestPaths.clear();
+        for (int n = 0; n < poses.size(); n++)
+        {
+            for (int m = 0; m < poses.size(); m++)
+            {
+                if (m == n)continue;
+                zVector str = poses[m].c;// poses[0].c;// nn.sdfSamplePoints[0].pt;
+                zVector end = poses[n].c;//nn.sdfSamplePoints[n++].pt;
+
+                if (!pointInsidePolygon(str, nn.polygon))continue;
+                if (!pointInsidePolygon(end, nn.polygon))continue;
+
+                myHeightField1.findShortestPath(str, end);
+
+
+                for (int i = 0; i < 5; i++)
+                {
+                    myHeightField1.smoothPath();
+                }
+
+                shortestPaths.push_back(myHeightField1.lastShortestPath);
+            }
+        }
     }
 
     // --------------- WRITE 3DM ---------------
@@ -455,7 +597,7 @@ void keyPress(unsigned char k, int xm, int ym)
     if (k == 'p') // populate
     {
         polygon.clear();
-        loadPolygonFromFile("data/cabin.txt", polygon);
+        loadPolygonFromFile(string("data/cabin.txt"), polygon);
 
         for (auto& pt : polygon)
         {
@@ -484,7 +626,7 @@ void keyPress(unsigned char k, int xm, int ym)
             plot.setDefaultBox();
             //plot.importPrimitive(polygon);
             plot.transformBox();
-           // plot.flipNormals();
+            plot.flipNormals();
             
             
             plot.id_u = id++;
@@ -513,7 +655,7 @@ void keyPress(unsigned char k, int xm, int ym)
             for (auto& parcel : plots)
                 for (int i = 0; i < parcel.nPoints; i++)
                 {
-                    SG.addPosition(parcel.boxPoints[i]);
+                    SG.addPosition(parcel.polyPoints[i]);
                 }
 
             for( auto p : nn.polygon)SG.addPosition(p);
@@ -603,7 +745,7 @@ void keyPress(unsigned char k, int xm, int ym)
             double omega = 1.88;
             double tol = 1e-4;
 
-        myHeightField.reructScreenedPoisson(alpha_base,sigma_cells,pin_threshold);
+        myHeightField.reconstruct_screened_poisson(alpha_base,sigma_cells,pin_threshold);
         myHeightField.setGridPointHeights();
     }
 
@@ -662,8 +804,8 @@ void keyPress(unsigned char k, int xm, int ym)
         for (int i = 0; i < poses.size(); i++)
                     sites.push_back(poses[i].c);
 
-        for (int i = 0; i < myHeightField2.RES; i++)
-            for (int j = 0; j < myHeightField2.RES; j++)
+        for (int i = 0; i < SF_RES; i++)
+            for (int j = 0; j < SF_RES; j++)
                 myHeightField2.field[i][j] = evalBlendedCircleSDF(myHeightField2.gridPoints[i][j], poses, radius);
 
         myHeightField2.clearField();
@@ -694,6 +836,11 @@ void keyPress(unsigned char k, int xm, int ym)
        
     }
 
+
+    if (k == 'l')
+    {
+        trainSGD(nn, dummyInput, dummyTarget,output,prevLoss, learningRate);
+    }
     
 }
 

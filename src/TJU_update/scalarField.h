@@ -1,0 +1,1296 @@
+﻿
+#ifndef _SCALAR_FIELD_
+#define _SCALAR_FIELD_
+
+
+//#pragma once
+
+
+#include <vector>
+#include <algorithm>
+#include <cmath>
+#include <headers/zApp/include/zObjects.h>
+#include <headers/zApp/include/zFnSets.h>
+#include <headers/zApp/include/zViewer.h>
+
+using namespace zSpace;
+
+//these two functiosn must be turned on for sketch_circleSDF_fitter.cpp
+inline zVector zMax( zVector& a,  zVector& b)
+{
+    return zVector(std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z));
+}
+
+inline float smin(float a, float b, float k)
+{
+    float h = std::max(k - fabs(a - b), 0.0f) / k;
+    return std::min(a, b) - h * h * k * 0.25f;
+}
+
+inline zVector zMin( zVector& a,  zVector& b)
+{
+    return zVector(std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z));
+}
+
+inline float zLerp(float a, float b, float t)
+{
+    return a + (b - a) * t;
+}
+
+
+inline void getJetColor(float value, float& r, float& g, float& b)
+{
+    // Clamp input to [-1, 1]
+    value = std::clamp(value, -1.0f, 1.0f);
+
+    // Normalize to [0, 1]
+    float normalized = (value + 1.0f) * 0.5f;
+
+    float fourValue = 4.0f * normalized;
+
+    r = std::clamp(std::min(fourValue - 1.5f, -fourValue + 4.5f), 0.0f, 1.0f);
+    g = std::clamp(std::min(fourValue - 0.5f, -fourValue + 3.5f), 0.0f, 1.0f);
+    b = std::clamp(std::min(fourValue + 0.5f, -fourValue + 2.5f), 0.0f, 1.0f);
+}
+
+
+enum class SMinMode
+{
+    MIN,
+    EXPONENTIAL,
+    ROOT,
+    SIGMOID,
+    POLY_QUADRATIC,
+    POLY_CUBIC,
+    POLY_QUARTIC,
+    CIRCULAR,
+    CIRCULAR_GEOMETRIC
+};
+
+#define OUT 1e6
+#define SF_RES 128
+
+class ScalarField2D
+{
+public:
+
+
+  
+
+    
+    int div = 2; 
+
+    zVector gridPoints[SF_RES][SF_RES];
+    float field[SF_RES][SF_RES];
+    float field_normalized[SF_RES][SF_RES];
+    zVector gradient[SF_RES][SF_RES];
+    std::vector<std::pair<zVector, zVector>> isolines;
+    std::vector<std::vector<zVector>> allContours;
+
+    ScalarField2D()
+    {
+        float span = 100.0f; // from -50 to +50
+        float step = span / (SF_RES - 1); // spacing between grid points
+
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                float x = -50.0f + i * step;
+                float y = -50.0f + j * step;
+
+                gridPoints[i][j] = zVector(x, y, 0);
+                field[i][j] = 0;
+                
+            }
+        }
+    }
+
+   
+
+    void clearField()
+    {
+        for (int i = 0; i < SF_RES; i++)
+            for (int j = 0; j < SF_RES; j++)
+            {
+                field[i][j] = field_normalized[i][j] = 0.0;
+                gradient[i][j] = zVector(0, 0, 0);
+            }
+                              
+        isolines.clear();
+        allContours.clear();
+
+    }
+
+    //----------------------------------------
+
+    float smin(float a, float b, float k)
+    {
+        float h = std::max(k - fabs(a - b), 0.0f) / k;
+        return std::min(a, b) - h * h * k * 0.25f;
+    }
+
+    void addVoronoi( std::vector<zVector>& sites )
+    {
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                zVector pt = gridPoints[i][j];
+                float minDist = 1e6f;
+                float secondMinDist = 1e6f;
+
+                for ( auto& site : sites)
+                {
+                    float d = pt.distanceTo(zVector(site));
+
+                    // Track the two closest sites
+                    if (d < minDist)
+                    {
+                        secondMinDist = minDist;
+                        minDist = d;
+                    }
+                    else if (d < secondMinDist)
+                    {
+                        secondMinDist = d;
+                    }
+                }
+
+                // Distance to the second closest site minus closest — sharpest at Voronoi edge
+                field[i][j] = (secondMinDist - minDist);
+            }
+        }
+
+        rescaleFieldToRange(-1, 1);
+    }
+
+    void addCircleSDF(zVector center, float radius , bool invertDistance = true)
+    {
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                zVector pt = gridPoints[i][j];
+                float d = pt.distanceTo(center);
+
+                // Signed distance: negative inside, zero on boundary, positive outside
+                float val = (d > radius) ? d : d - radius;
+                
+                field[i][j] = val;// std::min(val, field[i][j]);
+            }
+        }
+
+        rescaleFieldToRange(-1, 1);//closedfields rescale to -1,1
+    }
+
+    void addOrientedBoxSDF(zVector center, zVector halfSize, float angleRadians)
+    {
+        float c = cos(angleRadians);
+        float s = sin(angleRadians);
+
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                zVector p = gridPoints[i][j] - center;
+
+                // Rotate point into box's local frame
+                zVector pr(
+                    c * p.x + s * p.y,
+                    -s * p.x + c * p.y,
+                    0.0f
+                );
+
+                zVector d = zVector(fabs(pr.x), fabs(pr.y), 0.0f) - halfSize;
+
+                float outsideDist = zMax(d, zVector(0, 0, 0)).length();
+                float insideDist = std::min(std::max(d.x, d.y), 0.0f);
+
+                float signedDist = (outsideDist > 0.0f) ? outsideDist  :  insideDist;
+
+                field[i][j] = signedDist ;// std::min(signedDist * scale, field[i][j]);
+            }
+        }
+
+        rescaleFieldToRange(-1, 1);//closedfields rescale to -1,1
+    }
+
+    void addCircleSDFs(vector<zVector> rbfCenters, float radius = 2.0)
+    {
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                zVector p = gridPoints[i][j];
+                float d = p.distanceTo(rbfCenters[0]);
+                // Signed distance: negative inside, zero on boundary, positive outside
+                //float val = (d > radius) ? d : d - radius;
+
+                for (int i = 1; i < rbfCenters.size();  i++)
+                {
+                    float d_i = p.distanceTo(rbfCenters[i]);
+                    //val = (d_i > radius) ? d_i : -d_i ;
+                    d = std::min(d, d_i);
+                }
+
+
+                field[i][j] = (d < radius) ? (radius - d)*-1: d ;
+            }
+        }
+
+        rescaleFieldToRange(-1, 1);
+    }
+    //----------------------------------------
+    
+    void unionWith( ScalarField2D& other)
+    {
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                field[i][j] = std::min(field[i][j], other.field[i][j]);
+            }
+        }
+    }
+
+    void intersectWith( ScalarField2D& other)
+    {
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                field[i][j] = std::max(field[i][j], other.field[i][j]);
+            }
+        }
+    }
+
+    void subtract( ScalarField2D& other)
+    {
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                field[i][j] = std::max(field[i][j], -other.field[i][j]);
+            }
+        }
+    }
+
+    void blendWith( ScalarField2D& other, float smooth_k, SMinMode mode = SMinMode::EXPONENTIAL)
+    {
+        auto smin_exponential = [](float a, float b, float k)
+            {
+                float r = exp2(-a / k) + exp2(-b / k);
+                return -k * log2(r);
+            };
+
+        auto smin_root = [](float a, float b, float k)
+            {
+                k *= 2.0f;
+                float x = b - a;
+                return 0.5f * (a + b - sqrtf(x * x + k * k));
+            };
+
+        auto smin_sigmoid = [](float a, float b, float k)
+            {
+                k *= logf(2.0f);
+                float x = b - a;
+                return a + x / (1.0f - exp2(x / k));
+            };
+
+        auto smin_polyQuadratic = [](float a, float b, float k)
+            {
+                k *= 4.0f;
+                float h = std::max(k - fabs(a - b), 0.0f) / k;
+                return std::min(a, b) - h * h * k * 0.25f;
+            };
+
+        auto smin_polyCubic = [](float a, float b, float k)
+            {
+                k *= 6.0f;
+                float h = std::max(k - fabs(a - b), 0.0f) / k;
+                return std::min(a, b) - h * h * h * k / 6.0f;
+            };
+
+        auto smin_polyQuartic = [](float a, float b, float k)
+            {
+                k *= (16.0f / 3.0f);
+                float h = std::max(k - fabs(a - b), 0.0f) / k;
+                return std::min(a, b) - h * h * h * (4.0f - h) * k / 16.0f;
+            };
+
+        auto smin_circular = [](float a, float b, float k)
+            {
+                k *= 1.0f / (1.0f - sqrtf(0.5f));
+                float h = std::max(k - fabs(a - b), 0.0f) / k;
+                return std::min(a, b) - k * 0.5f * (1.0f + h - sqrtf(1.0f - h * (h - 2.0f)));
+            };
+
+        auto smin_circularGeometric = [](float a, float b, float k)
+            {
+                k *= 1.0f / (1.0f - sqrtf(0.5f));
+                float dx = std::max(k - a, 0.0f);
+                float dy = std::max(k - b, 0.0f);
+                float l = sqrtf(dx * dx + dy * dy);
+                return std::max(k, std::min(a, b)) - l;
+            };
+
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                float a = field[i][j];
+                float b = other.field[i][j];
+
+                switch (mode)
+                {
+                case SMinMode::MIN:
+                    field[i][j] = std::min(a, b);
+                    break;
+                case SMinMode::EXPONENTIAL:
+                    field[i][j] = smin_exponential(a, b, smooth_k);
+                    break;
+                case SMinMode::ROOT:
+                    field[i][j] = smin_root(a, b, smooth_k);
+                    break;
+                case SMinMode::SIGMOID:
+                    field[i][j] = smin_sigmoid(a, b, smooth_k);
+                    break;
+                case SMinMode::POLY_QUADRATIC:
+                    field[i][j] = smin_polyQuadratic(a, b, smooth_k);
+                    break;
+                case SMinMode::POLY_CUBIC:
+                    field[i][j] = smin_polyCubic(a, b, smooth_k);
+                    break;
+                case SMinMode::POLY_QUARTIC:
+                    field[i][j] = smin_polyQuartic(a, b, smooth_k);
+                    break;
+                case SMinMode::CIRCULAR:
+                    field[i][j] = smin_circular(a, b, smooth_k);
+                    break;
+                case SMinMode::CIRCULAR_GEOMETRIC:
+                    field[i][j] = smin_circularGeometric(a, b, smooth_k);
+                    break;
+                default:
+                    field[i][j] = std::min(a, b);
+                    break;
+                }
+            }
+        }
+
+        rescaleFieldToRange(-1, 1); 
+    }
+
+    //---------------------------------------------
+
+    void clampNeg()
+    {
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                field[i][j] = (field[i][j] < 0) ? field[i][j] * -1 : 0;
+            }
+        }
+    }
+    void clampPos()
+    {
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                field[i][j] = std::clamp(field[i][j], 0.f, 1.f);
+            }
+        }
+    }
+
+    void normalise()
+    {
+        float mn = 1e6f, mx = -1e6f;
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                if (fabs(field[i][j] - OUT) < 1e-6)continue; //exclude outside
+
+                mn = std::min(mn, field[i][j]);
+                mx = std::max(mx, field[i][j]);
+            }
+        }
+
+        float range = std::max(mx - mn, 1e-6f);
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                if (fabs(field[i][j] - OUT) < 1e-6)continue; //exclude outside
+
+                field_normalized[i][j] = ofMap(field[i][j], mn, mx, 0, 1) ;
+            }
+        }
+    }
+    void minMax( float &mn, float &mx)
+    {
+        mn = 1e6; mx = -mn;
+        for (int i = 0; i < SF_RES; ++i)
+            for (int j = 0; j < SF_RES; ++j)
+            {
+                float v = field[i][j];
+                mn = min(v, mn);
+                mx = max(v, mx);
+            }
+    }
+
+    void rescaleFieldToRange(float targetMin = -1.0f, float targetMax = 1.0f)
+    {
+        float minVal[2] = { 1e6f,  1e6f };
+        float maxVal[2] = { -1e6f, -1e6f };
+
+        for (int i = 0; i < SF_RES; ++i)
+            for (int j = 0; j < SF_RES; ++j)
+            {
+                float v = field[i][j];
+                int idx = (v >= 0.0f) ? 0 : 1;
+                minVal[idx] = std::min(minVal[idx], v);
+                maxVal[idx] = std::max(maxVal[idx], v);
+            }
+
+        float range[2] = {
+            std::max(maxVal[0] - minVal[0], 1e-6f),
+            std::max(maxVal[1] - minVal[1], 1e-6f)
+        };
+
+        for (int i = 0; i < SF_RES; ++i)
+            for (int j = 0; j < SF_RES; ++j)
+                field[i][j] = (field[i][j] >= 0.0f)
+                ? ofMap(field[i][j], minVal[0], maxVal[0], 0.0f, targetMax)
+                : ofMap(field[i][j], minVal[1], maxVal[1], targetMin, 0.0f);
+
+       
+
+        printf(" min max field values %.2f, %.2f,%.2f,%.2f \n", minVal[0], maxVal[0], minVal[1], maxVal[1]);
+        minMax(minVal[0], maxVal[0]);
+        printf(" min max field values after rescale %.2f, %.2f \n", minVal[0], maxVal[0]);
+       // printf(" range1 range2 %.2f, %.2f \n", range[0], range[1]);
+    }
+
+    //void rescaleFieldToRange(float targetMin = -1.0f, float targetMax = 1.0f)
+    //{
+    //    // --- Tunables to make behaviour stable across RES ---
+    //     float zeroEps = 1e-6f;                 // dead-band around zero to ignore tiny noise
+    //     int   N = std::max(1, RES * RES);
+    //     int   minCountForBin = std::max(1, N / 100); // at least ~1% of samples to call a bin "present"
+
+    //    // --- Pass 1: scan stats & robust sign counts (ignore |v| < zeroEps) ---
+    //    float minPos = 1e6f, maxPos = -1e6f;
+    //    float minNeg = 1e6f, maxNeg = -1e6f;
+    //    float gMin = 1e6f, gMax = -1e6f;
+    //    int   cntPos = 0, cntNeg = 0, cntZero = 0;
+    //    double sum = 0.0;
+
+    //    for (int i = 0; i < RES; ++i)
+    //    {
+    //        for (int j = 0; j < RES; ++j)
+    //        {
+    //            float v = field[i][j];
+    //            sum += v;
+
+    //            gMin = std::min(gMin, v);
+    //            gMax = std::max(gMax, v);
+
+    //            if (v > zeroEps)
+    //            {
+    //                ++cntPos;
+    //                minPos = std::min(minPos, v);
+    //                maxPos = std::max(maxPos, v);
+    //            }
+    //            else if (v < -zeroEps)
+    //            {
+    //                ++cntNeg;
+    //                minNeg = std::min(minNeg, v);
+    //                maxNeg = std::max(maxNeg, v);
+    //            }
+    //            else
+    //            {
+    //                ++cntZero; // near-zero bucket (pins to 0 in split mode)
+    //            }
+    //        }
+    //    }
+
+    //     bool hasPos = (cntPos >= minCountForBin);
+    //     bool hasNeg = (cntNeg >= minCountForBin);
+
+    //    // --- Case A: Mixed signs (robustly) -> split mapping, pin 0 to 0 ---
+    //    if (hasPos && hasNeg)
+    //    {
+    //        // include 0 as a bound so zero maps exactly to 0.0
+    //        float loPos = std::min(0.0f, minPos);
+    //        float hiPos = std::max(0.0f, maxPos);
+    //        float loNeg = std::min(minNeg, 0.0f);
+    //        float hiNeg = std::max(maxNeg, 0.0f);
+
+    //        float rangePos = std::max(hiPos - loPos, 1e-12f);
+    //        float rangeNeg = std::max(hiNeg - loNeg, 1e-12f);
+
+    //        for (int i = 0; i < RES; ++i)
+    //        {
+    //            for (int j = 0; j < RES; ++j)
+    //            {
+    //                float v = field[i][j];
+
+    //                if (v > zeroEps)          // positive bin => [0, +1]
+    //                {
+    //                    float t = (v - loPos) / rangePos;    // [0..1] with 0→0
+    //                    float n = std::clamp(t, 0.0f, 1.0f); // guard
+    //                    field[i][j] = targetMin + (targetMax - targetMin) * n; // [0..+1] if defaults
+    //                }
+    //                else if (v < -zeroEps)     // negative bin => [-1, 0]
+    //                {
+    //                    float t = (v - loNeg) / rangeNeg;    // [0..1] with 0→1
+    //                    float n = std::clamp(t, 0.0f, 1.0f);
+    //                    // map [0..1] so that loNeg -> -1, 0 -> 0
+    //                    float nSplit = -1.0f + n;            // [ -1 .. 0 ]
+    //                    field[i][j] = targetMin + (targetMax - targetMin) * ((nSplit + 1.0f) * 0.5f * 2.0f - 1.0f + 1.0f);
+    //                    // simpler: directly map nSplit ∈ [-1,0] to [targetMin, 0]:
+    //                    field[i][j] = ((nSplit + 1.0f) * 0.5f) * 0.0f +   // weight for 0  (drops out)
+    //                        (1.0f - ((nSplit + 1.0f) * 0.5f)) * targetMin; // maps -1->targetMin, 0->0
+    //                    // cleaner direct linear form:
+    //                    field[i][j] = targetMin * (1.0f - n) + 0.0f * n;     // loNeg->-1, 0->0
+    //                }
+    //                else                        // near zero -> exactly 0
+    //                {
+    //                    field[i][j] = 0.0f;
+    //                }
+    //            }
+    //        }
+
+    //        // Ensure exact endpoints reach targetMin/Max (if present)
+    //        // (Optional: no-op if data contains those extrema)
+
+    //        printf("rescaleFieldToRange: split mode | cntNeg=%d cntZero=%d cntPos=%d  "
+    //            "neg[%.6f,%.6f] pos[%.6f,%.6f]\n",
+    //            cntNeg, cntZero, cntPos, minNeg, maxNeg, minPos, maxPos);
+    //        return;
+    //    }
+
+    //    // --- Case B: Single-sign (or effectively single-sign) -> mean-center then map centred extrema to [-1,+1]
+    //     float mean = static_cast<float>(sum / N);
+
+    //    float cmin = 1e6f, cmax = -1e6f;
+    //    for (int i = 0; i < RES; ++i)
+    //    {
+    //        for (int j = 0; j < RES; ++j)
+    //        {
+    //            float c = field[i][j] - mean;   // center by mean
+    //            cmin = std::min(cmin, c);
+    //            cmax = std::max(cmax, c);
+    //        }
+    //    }
+
+    //    float denom = std::max(cmax - cmin, 1e-12f); // guard ant field
+
+    //    for (int i = 0; i < RES; ++i)
+    //    {
+    //        for (int j = 0; j < RES; ++j)
+    //        {
+    //            float c = field[i][j] - mean;           // centered value
+    //            float t = (c - cmin) / denom;           // [0..1]
+    //            float n = t * 2.0f - 1.0f;              // [-1..+1] exact at extrema
+    //            // Map to [targetMin, targetMax]
+    //            field[i][j] = targetMin + ((n + 1.0f) * 0.5f) * (targetMax - targetMin);
+    //        }
+    //    }
+
+    //    printf("rescaleFieldToRange: single-sign mode | mean=%.6f  cmin=%.6f  cmax=%.6f\n",
+    //        mean, cmin, cmax);
+    //}
+
+
+    // -----------------------------------------
+
+    enum class PMVariant
+    {
+        Exp,        // c = exp(-(g/k)^2)
+        Reciprocal  // c = 1 / (1 + (g/k)^2)
+    };
+
+    enum class DiffuseDir
+    {
+        None,           // classic Perona–Malik (edge-aware only)
+        AlongGradient,  // more smoothing along ∇u direction
+        AlongIsophote   // more smoothing along isophotes (⊥ ∇u)
+    };
+
+    void smoothDiffuseAnisotropic
+    (
+        float dt = 0.12f,
+        int   iterations = 10,
+        float k = 0.1f,          // contrast parameter (depends on your field scale)
+        PMVariant variant = PMVariant::Exp,
+        DiffuseDir dirMode = DiffuseDir::AlongIsophote,
+        float dirBiasStrength = 2.0f,          // ≥1: stronger bias; 1 = neutral
+        bool  ignoreOUT = true
+    )
+    {
+        if (dt <= 0.0f || iterations <= 0)
+        {
+            return;
+        }
+
+        auto clampi = [](int v, int lo, int hi) -> int
+            {
+                return (v < lo) ? lo : (v > hi) ? hi : v;
+            };
+
+        auto conduct = [&](float g) -> float
+            {
+                // g = |gradient|
+                float r = g / std::max(k, 1e-12f);
+                if (variant == PMVariant::Exp)
+                {
+                    return std::exp(-r * r);
+                }
+                else
+                {
+                    return 1.0f / (1.0f + r * r);
+                }
+            };
+
+        // small helpers
+        auto safeSample = [&](int i, int j, int ii, int jj, float uC) -> float
+            {
+                float v = field[ii][jj];
+                if (ignoreOUT && std::fabs(v - OUT) < 1e-6f) return uC;
+                return v;
+            };
+
+        auto gradAt = [&](int i, int j, float& gx, float& gy)
+            {
+                 int iN = clampi(i - 1, 0, SF_RES - 1);
+                 int iS = clampi(i + 1, 0, SF_RES - 1);
+                 int jW = clampi(j - 1, 0, SF_RES - 1);
+                 int jE = clampi(j + 1, 0, SF_RES - 1);
+
+                 float uC = field[i][j];
+                float uN = field[iN][j];
+                float uS = field[iS][j];
+                float uW = field[i][jW];
+                float uE = field[i][jE];
+
+                if (ignoreOUT)
+                {
+                    if (std::fabs(uN - OUT) < 1e-6f) uN = uC;
+                    if (std::fabs(uS - OUT) < 1e-6f) uS = uC;
+                    if (std::fabs(uW - OUT) < 1e-6f) uW = uC;
+                    if (std::fabs(uE - OUT) < 1e-6f) uE = uC;
+                }
+
+                // central differences
+                gx = 0.5f * (uE - uW);
+                gy = 0.5f * (uS - uN);
+            };
+
+        std::vector<float> next(SF_RES * SF_RES, 0.0f);
+        auto NX = [&](int i, int j) -> float& { return next[i * SF_RES + j]; };
+
+        for (int it = 0; it < iterations; ++it)
+        {
+            for (int i = 0; i < SF_RES; ++i)
+            {
+                for (int j = 0; j < SF_RES; ++j)
+                {
+                     float uC = field[i][j];
+
+                    if (ignoreOUT && std::fabs(uC - OUT) < 1e-6f)
+                    {
+                        NX(i, j) = OUT;
+                        continue;
+                    }
+
+                     int iN = clampi(i - 1, 0, SF_RES - 1);
+                     int iS = clampi(i + 1, 0, SF_RES - 1);
+                     int jW = clampi(j - 1, 0, SF_RES - 1);
+                     int jE = clampi(j + 1, 0, SF_RES - 1);
+
+                    // neighbor samples (OUT-safe)
+                    float uN = safeSample(i, j, iN, j, uC);
+                    float uS = safeSample(i, j, iS, j, uC);
+                    float uW = safeSample(i, j, i, jW, uC);
+                    float uE = safeSample(i, j, i, jE, uC);
+
+                    // Perona–Malik conductances using directional gradients
+                    // (N,S,W,E approximate directional |∇u| via forward/backward diffs)
+                    float gN = std::fabs(uN - uC);
+                    float gS = std::fabs(uS - uC);
+                    float gW = std::fabs(uW - uC);
+                    float gE = std::fabs(uE - uC);
+
+                    float cN = conduct(gN);
+                    float cS = conduct(gS);
+                    float cW = conduct(gW);
+                    float cE = conduct(gE);
+
+                    // Optional directional bias
+                    if (dirMode != DiffuseDir::None)
+                    {
+                        float gx, gy;
+                        gradAt(i, j, gx, gy);
+
+                        // unit direction to bias along
+                        float bx = 0.0f, by = 0.0f;
+                        if (dirMode == DiffuseDir::AlongGradient)
+                        {
+                            bx = gx; by = gy;
+                        }
+                        else // AlongIsophote: tangent = perpendicular to gradient
+                        {
+                            bx = -gy; by = gx;
+                        }
+                         float bnorm = std::sqrt(bx * bx + by * by);
+                        if (bnorm > 1e-12f)
+                        {
+                            bx /= bnorm; by /= bnorm;
+
+                            // directions to neighbors
+                            struct Dir { float dx, dy; float* c; };
+                            Dir dirs[4] =
+                            {
+                                {  0.0f, -1.0f, &cN },
+                                {  0.0f,  1.0f, &cS },
+                                { -1.0f,  0.0f, &cW },
+                                {  1.0f,  0.0f, &cE }
+                            };
+
+                            // cosine alignment (|dot|) ^ strength  -> scale conductance
+                            for (auto& d : dirs)
+                            {
+                                float align = std::fabs(bx * d.dx + by * d.dy); // 0..1
+                                float scale = std::pow(align, std::max(1.0f, dirBiasStrength));
+                                *(d.c) *= scale;
+                            }
+                        }
+                    }
+
+                    // Divergence of c * ∇u (4-neighbour form)
+                    float fluxN = cN * (uN - uC);
+                    float fluxS = cS * (uS - uC);
+                    float fluxW = cW * (uW - uC);
+                    float fluxE = cE * (uE - uC);
+
+                    float div = fluxN + fluxS + fluxW + fluxE;
+
+                    NX(i, j) = uC + dt * div;
+                }
+            }
+
+            // Commit
+            for (int i = 0; i < SF_RES; ++i)
+            {
+                for (int j = 0; j < SF_RES; ++j)
+                {
+                    field[i][j] = NX(i, j);
+                }
+            }
+        }
+    }
+
+    void smoothDiffuseIsotropic(float dt = 0.15f, int iterations = 10, bool ignoreOUT = true)
+    {
+        if (dt <= 0.0f || iterations <= 0)
+        {
+            return;
+        }
+
+        auto clampi = [](int v, int lo, int hi) -> int
+            {
+                return (v < lo) ? lo : (v > hi) ? hi : v;
+            };
+
+        std::vector<float> next(SF_RES * SF_RES, 0.0f);
+        auto F = [&](int i, int j) -> float& { return field[i][j]; };
+        auto NX = [&](int i, int j) -> float& { return next[i * SF_RES + j]; };
+
+        for (int it = 0; it < iterations; ++it)
+        {
+            // Jacobi step
+            for (int i = 0; i < SF_RES; ++i)
+            {
+                for (int j = 0; j < SF_RES; ++j)
+                {
+                     float uC = F(i, j);
+
+                    if (ignoreOUT && std::fabs(uC - OUT) < 1e-6f)
+                    {
+                        NX(i, j) = OUT;
+                        continue;
+                    }
+
+                    // Neumann-ish boundaries (clamped sampling)
+                     int iN = clampi(i - 1, 0, SF_RES - 1);
+                     int iS = clampi(i + 1, 0, SF_RES - 1);
+                     int jW = clampi(j - 1, 0, SF_RES - 1);
+                     int jE = clampi(j + 1, 0, SF_RES - 1);
+
+                    float uN = F(iN, j);
+                    float uS = F(iS, j);
+                    float uW = F(i, jW);
+                    float uE = F(i, jE);
+
+                    if (ignoreOUT)
+                    {
+                        if (std::fabs(uN - OUT) < 1e-6f) uN = uC;
+                        if (std::fabs(uS - OUT) < 1e-6f) uS = uC;
+                        if (std::fabs(uW - OUT) < 1e-6f) uW = uC;
+                        if (std::fabs(uE - OUT) < 1e-6f) uE = uC;
+                    }
+
+                    // 5-point Laplacian
+                    float lap = (uN + uS + uW + uE - 4.0f * uC);
+                    NX(i, j) = uC + dt * lap;
+                }
+            }
+
+            // Commit
+            for (int i = 0; i < SF_RES; ++i)
+            {
+                for (int j = 0; j < SF_RES; ++j)
+                {
+                    F(i, j) = NX(i, j);
+                }
+            }
+        }
+    }
+
+
+    //---------------------------------------------
+     zVector getGradient(int i, int j)
+    {
+        return gradient[i][j];
+    }
+
+     void computeGradient()
+    {
+        for (int i = 1; i < SF_RES - 1; i++)
+        {
+            for (int j = 1; j < SF_RES - 1; j++)
+            {
+                float dx = (field[i + 1][j] - field[i - 1][j]) * 0.5f;
+                float dy = (field[i][j + 1] - field[i][j - 1]) * 0.5f;
+                gradient[i][j] = zVector(dx, dy, 0);
+            }
+        }
+    }
+
+     float sampleAt(float x, float y)
+     {
+         float span = 100.0f;
+         float step = span / (SF_RES - 1);
+
+         float fx = (x + 50.0f) / step;
+         float fy = (y + 50.0f) / step;
+
+         int i = std::floor(fx);
+         int j = std::floor(fy);
+
+         float tx = fx - i;
+         float ty = fy - j;
+
+         if (i < 0 || j < 0 || i >= SF_RES - 1 || j >= SF_RES - 1)
+             return 1e6f;
+
+         float f00 = field[i][j];
+         float f10 = field[i + 1][j];
+         float f01 = field[i][j + 1];
+         float f11 = field[i + 1][j + 1];
+
+         float fx0 = (1 - tx) * f00 + tx * f10;
+         float fx1 = (1 - tx) * f01 + tx * f11;
+         return (1 - ty) * fx0 + ty * fx1;
+     }
+
+     zVector gradientAt( zVector& p)
+     {
+         float eps = 1.0f;
+         float dx = sampleAt(p.x + eps, p.y) - sampleAt(p.x - eps, p.y);
+         float dy = sampleAt(p.x, p.y + eps) - sampleAt(p.x, p.y - eps);
+         return zVector(dx, dy, 0.0f) * 0.5f;
+     }
+     //---------------------------------------------
+     
+     vector<zVector> streamLine;
+     void integrateStreamLine(zVector startPt)
+     {
+         zVector pt = startPt;
+         streamLine.clear();
+         zVector grad;
+         for (int i = 0; i < 5000; i++)
+         {
+             grad = gradientAt(pt);
+             grad.normalize();
+             grad *= -1;
+             pt += grad;
+             streamLine.push_back(pt);
+         }
+     }
+
+    //---------------------------------------------
+
+    void processTriangle(zVector pts[3], float vals[3], float thresh, std::vector<std::pair<zVector, zVector>>& lines)
+    {
+        std::vector<zVector> crossings;
+        for (int k = 0; k < 3; k++)
+        {
+            int nxt = (k + 1) % 3;
+            if ((vals[k] < thresh && vals[nxt] >= thresh) || (vals[nxt] < thresh && vals[k] >= thresh))
+            {
+                float t = (thresh - vals[k]) / (vals[nxt] - vals[k]);
+                zVector ip = pts[k] + (pts[nxt] - pts[k]) * t;
+                crossings.push_back(ip);
+            }
+        }
+
+        if (crossings.size() == 2)
+        {
+            lines.push_back({ crossings[0], crossings[1] });
+        }
+    }
+
+    void computeIsocontours( float threshold)
+    {
+        isolines.clear();
+        
+
+        for (int i = 0; i < SF_RES - 1; i++)
+        {
+            for (int j = 0; j < SF_RES - 1; j++)
+            {
+                zVector quadPts[4] = {
+                    gridPoints[i][j],
+                    gridPoints[i + 1][j],
+                    gridPoints[i][j + 1],
+                    gridPoints[i + 1][j + 1]
+                };
+
+                float quadVals[4] = {
+                    field[i][j],
+                    field[i + 1][j],
+                    field[i][j + 1],
+                    field[i + 1][j + 1]
+                };
+
+                zVector tri1Pts[3] = { quadPts[0], quadPts[1], quadPts[2] };
+                float tri1Vals[3] = { quadVals[0], quadVals[1], quadVals[2] };
+
+                zVector tri2Pts[3] = { quadPts[1], quadPts[2], quadPts[3] };
+                float tri2Vals[3] = { quadVals[1], quadVals[2], quadVals[3] };
+
+                processTriangle(tri1Pts, tri1Vals, threshold, isolines);
+                processTriangle(tri2Pts, tri2Vals, threshold, isolines);
+            }
+        }
+    }
+
+    void computeIsocontours(float threshold, std::vector<std::pair<zVector, zVector>>& output)
+    {
+        for (int i = 0; i < SF_RES - 1; i++)
+        {
+            for (int j = 0; j < SF_RES - 1; j++)
+            {
+                zVector p[4] = {
+                    gridPoints[i][j],
+                    gridPoints[i + 1][j],
+                    gridPoints[i + 1][j + 1],
+                    gridPoints[i][j + 1]
+                };
+
+                float v[4] = {
+                    field[i][j],
+                    field[i + 1][j],
+                    field[i + 1][j + 1],
+                    field[i][j + 1]
+                };
+
+                auto addLine = [&](zVector a, zVector b, float va, float vb)
+                    {
+                        if ((va < threshold && vb >= threshold) || (vb < threshold && va >= threshold))
+                        {
+                            float t = (threshold - va) / (vb - va);
+                            output.emplace_back(a + (b - a) * t, zVector());  // start pt added
+                        }
+                    };
+
+                std::vector<zVector> pts;
+                for (int k = 0; k < 4; k++)
+                {
+                    int next = (k + 1) % 4;
+                    if ((v[k] < threshold && v[next] >= threshold) ||
+                        (v[next] < threshold && v[k] >= threshold))
+                    {
+                        float t = (threshold - v[k]) / (v[next] - v[k]);
+                        pts.push_back(p[k] + (p[next] - p[k]) * t);
+                    }
+                }
+
+                if (pts.size() == 2)
+                {
+                    output.emplace_back(pts[0], pts[1]);
+                }
+            }
+        }
+    }
+
+
+    std::vector<std::vector<zVector>> getOrderedContours(float tolerance = 1e-4f)
+    {
+        allContours.clear();
+        if (isolines.empty()) return allContours;
+
+        // Helper lambda for inexact match
+        auto isClose = [tolerance](zVector& a, zVector& b)
+            {
+                return ((a - b) * (a - b)) < (tolerance * tolerance);
+            };
+
+        // Remaining unprocessed segments
+        std::vector<std::pair<zVector, zVector>> remaining = isolines;
+
+        while (!remaining.empty())
+        {
+            std::vector<zVector> contour;
+            zVector start = remaining[0].first;
+            zVector current = remaining[0].second;
+            contour.push_back(start);
+            contour.push_back(current);
+            remaining.erase(remaining.begin());
+
+            bool extended = true;
+            while (extended)
+            {
+                extended = false;
+
+                for (auto it = remaining.begin(); it != remaining.end(); ++it)
+                {
+                    if (isClose(current, it->first))
+                    {
+                        current = it->second;
+                        contour.push_back(current);
+                        remaining.erase(it);
+                        extended = true;
+                        break;
+                    }
+                    else if (isClose(current, it->second))
+                    {
+                        current = it->first;
+                        contour.push_back(current);
+                        remaining.erase(it);
+                        extended = true;
+                        break;
+                    }
+                    else if (isClose(contour.front(), it->first))
+                    {
+                        contour.insert(contour.begin(), it->second);
+                        extended = true;
+                        remaining.erase(it);
+                        break;
+                    }
+                    else if (isClose(contour.front(), it->second))
+                    {
+                        contour.insert(contour.begin(), it->first);
+                        extended = true;
+                        remaining.erase(it);
+                        break;
+                    }
+                }
+            }
+
+            allContours.push_back(contour);
+        }
+
+        return allContours;
+    }
+
+ 
+    //---------------------------------------------
+
+    void smoothContourAdaptive(std::vector<zVector>& contour, int iterations = 1, bool preserveEnds = true, float angleThreshold = 15.0f)
+    {
+        if (contour.size() < 3) return;
+
+        auto angleBetween = []( zVector& a,  zVector& b,  zVector& c) -> float
+            {
+                zVector u = b - a;
+                zVector v = c - b;
+                u.normalize();
+                v.normalize();
+                float dot = std::clamp(u * v, -1.0f, 1.0f);
+                return acos(dot) * RAD_TO_DEG;
+            };
+
+        for (int iter = 0; iter < iterations; iter++)
+        {
+            std::vector<zVector> smoothed = contour;
+
+            for (size_t i = 1; i < contour.size() - 1; ++i)
+            {
+                if (preserveEnds && (i == 0 || i == contour.size() - 1)) continue;
+
+                float angle = angleBetween(contour[i - 1], contour[i], contour[i + 1]);
+
+                if (angle < angleThreshold)
+                {
+                    // High curvature → preserve
+                    smoothed[i] = contour[i];
+                }
+                else
+                {
+                    // Low curvature → smooth
+                    smoothed[i] =
+                        contour[i - 1] * 0.25f +
+                        contour[i] * 0.50f +
+                        contour[i + 1] * 0.25f;
+                }
+            }
+
+            contour = smoothed;
+        }
+    }
+
+    void smoothContour(std::vector<zVector>& contour, int iterations = 1)
+    {
+        if (contour.size() < 3) return;
+
+        for (int iter = 0; iter < iterations; iter++)
+        {
+            std::vector<zVector> smoothed = contour;
+
+            for (size_t i = 1; i < contour.size() - 1; ++i)
+            {
+                smoothed[i] =
+                    contour[i - 1] * 0.3f +
+                    contour[i] * 0.4f +
+                    contour[i + 1] * 0.3f;
+            }
+
+            contour = smoothed;
+        }
+    }
+
+    //---------------------------------------------
+
+    void drawStreamLine()
+    {
+        for (int i = 0; i < streamLine.size(); i++)
+        {
+            int nxt = (i + 1) % streamLine.size();
+
+            drawLine(zVecToAliceVec(streamLine[i]), zVecToAliceVec(streamLine[nxt]));
+        }
+
+    }
+
+    char s[20];
+    void drawFieldPoints(bool drawGradient = false, bool debug = false)
+    {
+        Alice::vec pt;
+        normalise();
+        glPointSize(2);
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                float f = field[i][j];
+                float r, g, b;
+                getJetColor(f, r, g, b);
+
+                //glColor3f(field[i][j], 0, 0);
+                glColor3f(r, g, b);
+                drawPoint( zVecToAliceVec(gridPoints[i][j]) );
+
+                if (debug)
+                {
+                    sprintf(s, "%.2f", field[i][j]);
+                    drawString(s, zVecToAliceVec(gridPoints[i][j]));
+                }
+
+                if (drawGradient)
+                {
+                    pt = zVecToAliceVec(gridPoints[i][j]);
+                    zVector grad = gradient[i][j];
+                    grad.normalize();
+
+                    drawLine(pt , pt + zVecToAliceVec(grad) * 0.4);
+                }
+            }
+        }
+        glPointSize(1);
+    }
+
+    void drawIsocontours(float threshold, bool draw = true)
+    {
+
+        computeIsocontours(threshold);
+
+       // glColor3f(0.1, 0, 0);
+        if (draw)
+            for (auto& segment : isolines)
+            {
+                glLineWidth(3);
+                drawLine(zVecToAliceVec(segment.first), zVecToAliceVec(segment.second));
+                glLineWidth(1);
+            }
+        //glColor3f(0, 0, 0);
+
+
+    }
+
+    //---------------------------------------
+
+    void printField()
+    {
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                float f = field[i][j];
+                float r, g, b;
+                getJetColor(f, r, g, b);
+
+                glColor3f(r, g, b);
+                drawPoint(zVecToAliceVec(gridPoints[i][j]));
+
+                sprintf(s, "%.2f", field[i][j]);
+                cout << s << endl;
+            }
+        }
+
+    }
+
+    void exportOrderedContoursAsCSV( std::string& filename, float tolerance = 1e-4f)
+    {
+        std::ofstream out(filename);
+        if (!out.is_open())
+        {
+            std::cerr << "Failed to open file for writing: " << filename << std::endl;
+            return;
+        }
+
+        std::vector<std::vector<zVector>> contours = getOrderedContours(tolerance);
+
+        for (size_t i = 0; i < contours.size(); ++i)
+        {
+            out << "Contour_" << i << "\n";
+            for ( auto& pt : contours[i])
+            {
+                out << std::fixed << std::setprecision(6)
+                    << pt.x << "," << pt.y << "," << pt.z << "\n";
+            }
+            out << "\n";
+        }
+
+        out.close();
+        std::cout << "Contours exported to: " << filename << std::endl;
+    }
+
+};
+
+
+#endif // !_SCALAR_FIELD_

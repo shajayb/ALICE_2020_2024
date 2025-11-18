@@ -31,6 +31,7 @@
     <ClInclude Include="src\userSrc\RhinoIO.h">
       <Filter>IMP_SKETCHES</Filter>
     </ClInclude>
+    <ClInclude Include="src\userSrc\parcel_vector.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="MVC">
@@ -63,9 +64,6 @@
       <Filter>sketches</Filter>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_MLP_SDF_latentspace.cpp">
-      <Filter>sketches</Filter>
-    </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_parcel.cpp">
       <Filter>sketches</Filter>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_polygonSDF_mlp_tinyDNN.cpp">

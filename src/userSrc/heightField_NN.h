@@ -82,7 +82,7 @@ float signedDistanceToPolygon(zVector& p,  std::vector<zVector>& poly)
 // Evaluates the SDF of the given polygon
 float evalPolygonSDF(zVector& p, std::vector<zVector>& poly)
 {
-    return signedDistanceToPolygon(_cast<zVector&>(p), poly);
+    return signedDistanceToPolygon(p, poly);
 }
 
 // Computes blended SDF from all circles defined by pose centers
@@ -138,9 +138,9 @@ public:
         sdfSamplePoints.clear();
 
         sdfSample_centroid = zVector(0, 0, 0);
-        for (int i = 0; i < htField.RES; i += 2)
+        for (int i = 0; i < SF_RES; i += 2)
         {
-            for (int j = 0; j < htField.RES; j += 2)
+            for (int j = 0; j < SF_RES; j += 2)
             {
                 float val = htField.field[i][j];
 
@@ -162,9 +162,9 @@ public:
     void set_field_values_from_polygon(vector<zVector>& polygon, HeightField2D& htField)
     {
 
-        for (int i = 0; i < htField.RES; ++i)
+        for (int i = 0; i < SF_RES; ++i)
         {
-            for (int j = 0; j < htField.RES; ++j)
+            for (int j = 0; j < SF_RES; ++j)
             {
                 zVector pt = htField.gridPoints[i][j];
 
@@ -374,7 +374,8 @@ public:
             //  grad *= (d * 2);
 
             //  //poses[i].c += grad;
-            //  poses[i].c = sdfSample_centroid;
+            //  //poses[i].c = sdfSample_centroid;
+            // // poses[i].c = polygon[int(ofRandom(0, polygon.size()-1))];
             //}
 
             poses[i].v = rawDir;

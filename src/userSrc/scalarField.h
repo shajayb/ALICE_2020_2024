@@ -875,7 +875,8 @@ public:
             {
                 float dx = (field[i + 1][j] - field[i - 1][j]) * 0.5f;
                 float dy = (field[i][j + 1] - field[i][j - 1]) * 0.5f;
-                gradient[i][j] = zVector(dx, dy, 0);
+                gradient[i][j] = zVector(dx, dy, 0) ^ zVector(0,0,1);
+                gradient[i][j].normalize();
             }
         }
     }

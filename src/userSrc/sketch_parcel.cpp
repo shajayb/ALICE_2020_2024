@@ -60,95 +60,95 @@ zVector AliceVecToZvec( Alice::vec &in)
 	return zVector(in.x, in.y, in.z);
 }
 
-int insidePolygon(zVector* polygon, int N, zVector& p, int bound)
-{
-	//cross points count of x
-	int __count = 0;
-
-	//neighbour bound vertices
-	zVector p1, p2;
-
-	//left vertex
-	p1 = polygon[0];
-
-	//check all rays
-	for (int i = 1; i <= N; ++i)
-	{
-		//point is an vertex
-		if (p == p1) return bound;
-
-		//right vertex
-		p2 = polygon[i % N];
-
-		//ray is outside of our interests
-		if (p.y < MIN(p1.y, p2.y) || p.y > MAX(p1.y, p2.y))
-		{
-			//next ray left point
-			p1 = p2; continue;
-		}
-
-		//ray is crossing over by the algorithm (common part of)
-		if (p.y > MIN(p1.y, p2.y) && p.y < MAX(p1.y, p2.y))
-		{
-			//x is before of ray
-			if (p.x <= MAX(p1.x, p2.x))
-			{
-				//overlies on a horizontal ray
-				if (p1.y == p2.y && p.x >= MIN(p1.x, p2.x)) return bound;
-
-				//ray is vertical
-				if (p1.x == p2.x)
-				{
-					//overlies on a ray
-					if (p1.x == p.x) return bound;
-					//before ray
-					else ++__count;
-				}
-
-				//cross point on the left side
-				else
-				{
-					//cross point of x
-					double xinters = (p.y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y) + p1.x;
-
-					//overlies on a ray
-					if (fabs(p.x - xinters) < EPS) return bound;
-
-					//before ray
-					if (p.x < xinters) ++__count;
-				}
-			}
-		}
-		//special case when ray is crossing through the vertex
-		else
-		{
-			//p crossing over p2
-			if (p.y == p2.y && p.x <= p2.x)
-			{
-				//next vertex
-				 zVector& p3 = polygon[(i + 1) % N];
-
-				//p.y lies between p1.y & p3.y
-				if (p.y >= MIN(p1.y, p3.y) && p.y <= MAX(p1.y, p3.y))
-				{
-					++__count;
-				}
-				else
-				{
-					__count += 2;
-				}
-			}
-		}
-
-		//next ray left point
-		p1 = p2;
-	}
-
-	//EVEN
-	if (__count % 2 == 0) return(0);
-	//ODD
-	else return(1);
-}
+//int insidePolygon(zVector* polygon, int N, zVector& p, int bound)
+//{
+//	//cross points count of x
+//	int __count = 0;
+//
+//	//neighbour bound vertices
+//	zVector p1, p2;
+//
+//	//left vertex
+//	p1 = polygon[0];
+//
+//	//check all rays
+//	for (int i = 1; i <= N; ++i)
+//	{
+//		//point is an vertex
+//		if (p == p1) return bound;
+//
+//		//right vertex
+//		p2 = polygon[i % N];
+//
+//		//ray is outside of our interests
+//		if (p.y < MIN(p1.y, p2.y) || p.y > MAX(p1.y, p2.y))
+//		{
+//			//next ray left point
+//			p1 = p2; continue;
+//		}
+//
+//		//ray is crossing over by the algorithm (common part of)
+//		if (p.y > MIN(p1.y, p2.y) && p.y < MAX(p1.y, p2.y))
+//		{
+//			//x is before of ray
+//			if (p.x <= MAX(p1.x, p2.x))
+//			{
+//				//overlies on a horizontal ray
+//				if (p1.y == p2.y && p.x >= MIN(p1.x, p2.x)) return bound;
+//
+//				//ray is vertical
+//				if (p1.x == p2.x)
+//				{
+//					//overlies on a ray
+//					if (p1.x == p.x) return bound;
+//					//before ray
+//					else ++__count;
+//				}
+//
+//				//cross point on the left side
+//				else
+//				{
+//					//cross point of x
+//					double xinters = (p.y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y) + p1.x;
+//
+//					//overlies on a ray
+//					if (fabs(p.x - xinters) < EPS) return bound;
+//
+//					//before ray
+//					if (p.x < xinters) ++__count;
+//				}
+//			}
+//		}
+//		//special case when ray is crossing through the vertex
+//		else
+//		{
+//			//p crossing over p2
+//			if (p.y == p2.y && p.x <= p2.x)
+//			{
+//				//next vertex
+//				 zVector& p3 = polygon[(i + 1) % N];
+//
+//				//p.y lies between p1.y & p3.y
+//				if (p.y >= MIN(p1.y, p3.y) && p.y <= MAX(p1.y, p3.y))
+//				{
+//					++__count;
+//				}
+//				else
+//				{
+//					__count += 2;
+//				}
+//			}
+//		}
+//
+//		//next ray left point
+//		p1 = p2;
+//	}
+//
+//	//EVEN
+//	if (__count % 2 == 0) return(0);
+//	//ODD
+//	else return(1);
+//}
 
 double x[4], y[4], u, v;
 zVector IntersectEdges(zVector& p1, zVector& p2, zVector& p3, zVector& p4, IntersectResult& IR)
@@ -190,7 +190,7 @@ public:
 	zVector centerOfBox;
 	float areaOfBox;
 
-	zVector boxPoints[nPoly];
+	zVector polyPoints[nPoly];
 	zVector boxPointsNormals[nPoly];
 
 	zVector centerPoints[num_centers];
@@ -221,7 +221,7 @@ public:
 			float x = r * sin( float(i) * inc) ;
 			float y = r * cos( float(i) * inc) ;
 
-			boxPoints[i] = zVector(x,y,0);
+			polyPoints[i] = zVector(x,y,0);
 			boolMove[i] = true;
 		}
 
@@ -251,7 +251,7 @@ public:
 
 			for (int i = 0; i < nPoints; i++)
 			{
-				boxPoints[i] = vertexPositions[i];
+				polyPoints[i] = vertexPositions[i];
 				boolMove[i] = true;
 			}
 		}
@@ -277,7 +277,7 @@ public:
 		TM.inverse();
 
 		for (int i = 0; i < nPoints; i++)
-			boxPoints[i] = boxPoints[i] * TM;
+			polyPoints[i] = polyPoints[i] * TM;
 	}
 
 	int Mod(int a, int n)
@@ -308,11 +308,11 @@ public:
 		{
 			int next = Mod(i+1,nPoints);// (i + 1) % nPoints;
 			int prev = Mod(i - 1, nPoints); //(nPoly - 1 + i) % nPoints;
-			zVector e1 = (boxPoints[i] - boxPoints[prev])^ zVector(0, 0, 1);
-			zVector e2 = (boxPoints[next] - boxPoints[i]) ^ zVector(0, 0, 1);;
+			zVector e1 = (polyPoints[i] - polyPoints[prev])^ zVector(0, 0, 1);
+			zVector e2 = (polyPoints[next] - polyPoints[i]) ^ zVector(0, 0, 1);;
 
 			zVector norm =  ((e1 + e2) * 0.5);
-			zVector compareVec = boxPoints[i] - centerOfBox;
+			zVector compareVec = polyPoints[i] - centerOfBox;
 			if (norm * compareVec) norm *= -1;
 
 			norm.normalize();
@@ -326,7 +326,7 @@ public:
 		for (int i = 0; i < nPoints; i++)
 		{
 			int nxt = Mod(i + i, nPoints);
-			areaOfBox += ((boxPoints[nxt] - boxPoints[i]) ^ (centerOfBox - boxPoints[i])).length() * 0.5;
+			areaOfBox += ((polyPoints[nxt] - polyPoints[i]) ^ (centerOfBox - polyPoints[i])).length() * 0.5;
 
 		}
 
@@ -339,7 +339,7 @@ public:
 		zVector mean, eigenVals, eigenVecs[3];
 		//double wts[3];
 
-		mat.PCA(boxPoints, nPoints, mean, eigenVals, eigenVecs);
+		mat.PCA(polyPoints, nPoints, mean, eigenVals, eigenVecs);
 
 		for (int i = 0; i < 3; i++)
 		{
@@ -373,7 +373,7 @@ public:
 		TM.col(3) << c.x, c.y, c.z, 1;
 
 		for (int i = 0; i < nPoints; i++)
-			boxPoints[i] = boxPoints[i] * TM;
+			polyPoints[i] = polyPoints[i] * TM;
 
 		computeNormals();
 	}
@@ -385,14 +385,14 @@ public:
 		{
 			np = boxPointsNormals[i];
 
-			if (boolMove[i])boxPoints[i] += np;
+			if (boolMove[i])polyPoints[i] += np;
 
 			for (auto& parcel : AB)
 			{
 				if (parcel.id_u != id_u)
 					for (int j = 0; j < nPoints; j++)
 					{
-						float dist = boxPoints[i].distanceTo(parcel.boxPoints[j]);
+						float dist = polyPoints[i].distanceTo(parcel.polyPoints[j]);
 
 						if (dist < collisionRad)
 						{
@@ -416,19 +416,19 @@ public:
 		{
 			np = boxPointsNormals[i];
 
-			if (boolMove[i])boxPoints[i] += np;
+			if (boolMove[i])polyPoints[i] += np;
 
 			//for (auto& parcel : AB)
 			{
 				//if (parcel.id_u != id_u)
-				int num_nbors = SG->getNeighBors(nborIds, boxPoints[i], collisionRad*2  );
+				int num_nbors = SG->getNeighBors(nborIds, polyPoints[i], collisionRad*2  );
 
 					/// collision test with vertices.
 					for (int j = 0; j < num_nbors; j++)
 					{
 						if (nborIds[j] >= (id_u * nPoints) && nborIds[j] < (id_u + 1) * nPoints)continue;
 
-						float dist = boxPoints[i].distanceTo( SG->positions[ nborIds[j]] );
+						float dist = polyPoints[i].distanceTo( SG->positions[ nborIds[j]] );
 						
 						if (dist < collisionRad)boolMove[i] = false;
 
@@ -446,7 +446,7 @@ public:
 
 						np.normalize();
 						IntersectResult IR;
-						IntersectEdges(boxPoints[i], boxPoints[i] + np * collisionRad * 2, SG->positions[nborIds[j]], SG->positions[next_j], IR);
+						IntersectEdges(polyPoints[i], polyPoints[i] + np * collisionRad * 2, SG->positions[nborIds[j]], SG->positions[next_j], IR);
 
 						if (IR == INTERESECTING)
 						{
@@ -532,7 +532,7 @@ public:
 						int next_j = (j + 1) % nPoints;
 
 						IntersectResult IR;
-						zVector int_pt = IntersectEdges(boxPoints[i], boxPoints[nxt], otherBox.boxPoints[j], otherBox.boxPoints[next_j], IR);
+						zVector int_pt = IntersectEdges(polyPoints[i], polyPoints[nxt], otherBox.polyPoints[j], otherBox.polyPoints[next_j], IR);
 
 						if (IR == INTERESECTING)
 						{
@@ -544,20 +544,20 @@ public:
 						}
 						
 						bool i_in, nxt_in;
-						i_in = insidePolygon(otherBox.boxPoints, nPoints, boxPoints[i], 0);
-						nxt_in = insidePolygon(otherBox.boxPoints, nPoly, boxPoints[nxt], 0);
+						i_in = insidePolygon(otherBox.polyPoints, nPoints, polyPoints[i], 0);
+						nxt_in = insidePolygon(otherBox.polyPoints, nPoly, polyPoints[nxt], 0);
 
 						zVector np = boxPointsNormals[i];
 
 						if (i_in)
 						{
-							boxPoints[i] -= boxPointsNormals[i];
+							polyPoints[i] -= boxPointsNormals[i];
 							boolMove[i] = false;
 						
 						}
 						if (nxt_in)
 						{
-							boxPoints[nxt] -= boxPointsNormals[nxt];
+							polyPoints[nxt] -= boxPointsNormals[nxt];
 							boolMove[nxt] = false;
 						}
 						
@@ -577,15 +577,15 @@ public:
 		for (int i = 0; i < nPoints; i++)
 		{
 			int nxt = Mod(i + 1, nPoints);
-			zVector edge = boxPoints[nxt] - boxPoints[i];
+			zVector edge = polyPoints[nxt] - polyPoints[i];
 			double displacement = edge.length() - restLength;
 
 			edge.normalize();
 			if(boolMove[i])
-				boxPoints[i] += edge * displacement * 0.4;	
+				polyPoints[i] += edge * displacement * 0.4;	
 			
 			if (boolMove[nxt])
-				boxPoints[nxt] -= edge * displacement * 0.4;
+				polyPoints[nxt] -= edge * displacement * 0.4;
 		}
 
 	}
@@ -598,9 +598,9 @@ public:
 			int prev = Mod(i - 1, nPoints);// (i + nPoints - 1) % nPoints;
 			int next = Mod(i + 1, nPoints);// (i + 1) % nPoints;
 			if( !boolMove[i])
-				boxPoints[i] = boxPoints[prev] * 0.15 + boxPoints[i]*0.7 + boxPoints[next] * 0.15;
+				polyPoints[i] = polyPoints[prev] * 0.15 + polyPoints[i]*0.7 + polyPoints[next] * 0.15;
 			else
-				boxPoints[i] = boxPoints[prev] * 0.3 + boxPoints[i] * 0.4 + boxPoints[next] * 0.3;
+				polyPoints[i] = polyPoints[prev] * 0.3 + polyPoints[i] * 0.4 + polyPoints[next] * 0.3;
 		}
 
 	}
@@ -645,7 +645,7 @@ public:
 			if (forces[i].length() < 1)
 			{
 				centerPoints[i] += forces[i];
-				if (!insidePolygon(boxPoints, nPoints, centerPoints[i], 0))centerPoints[i] -= forces[i]*2;
+				if (!insidePolygon(polyPoints, nPoints, centerPoints[i], 0))centerPoints[i] -= forces[i]*2;
 				
 			}
 				
@@ -690,7 +690,7 @@ public:
 			//drawLine and drawPoint accept data of type : Alice::vec
 			// so we need to convert zVector to Alice::vec;
 			glColor3f(1, 0, 0);
-			drawLine(zVecToAliceVec(boxPoints[i]), zVecToAliceVec(boxPoints[(i + 1) % nPoints]));
+			drawLine(zVecToAliceVec(polyPoints[i]), zVecToAliceVec(polyPoints[(i + 1) % nPoints]));
 			norm = boxPointsNormals[i];
 			
 
@@ -698,8 +698,8 @@ public:
 			// so we need to convert zVector to Alice::vec;
 			(boolMove[i]) ? glColor3f(1, 0, 0) : glColor3f(0, 0, 1);
 
-			drawPoint(zVecToAliceVec(boxPoints[i]));
-			drawLine(zVecToAliceVec(boxPoints[i]), zVecToAliceVec(boxPoints[i] + norm ));
+			drawPoint(zVecToAliceVec(polyPoints[i]));
+			drawLine(zVecToAliceVec(polyPoints[i]), zVecToAliceVec(polyPoints[i] + norm ));
 
 
 			/*for (int i = 0; i < nPoints; i++)
@@ -944,7 +944,7 @@ void keyPress(unsigned char k, int xm, int ym) // events
 
 			for (int i = 0; i < parcel.n_cen; i++)
 			{
-				if (!insidePolygon(parcel.boxPoints, parcel.nPoints, parcel.centerPoints[i] + parcel.forces[i] * 2, 0))continue;
+				if (!insidePolygon(parcel.polyPoints, parcel.nPoints, parcel.centerPoints[i] + parcel.forces[i] * 2, 0))continue;
 
 				AB.centerOfBox = parcel.centerPoints[i];
 				AB.directionOfBox = parcel.directionOfBox;
@@ -1035,7 +1035,7 @@ void keyPress(unsigned char k, int xm, int ym) // events
 		for( auto&p : vp)
 			for (auto& parcel : parcels)
 			{
-				bool inside = insidePolygon(parcel.boxPoints, parcel.nPoints, p, 0);
+				bool inside = insidePolygon(parcel.polyPoints, parcel.nPoints, p, 0);
 					
 				if (inside)p.z = 100;
 			}
@@ -1100,7 +1100,7 @@ void keyPress(unsigned char k, int xm, int ym) // events
 		for( auto &parcel : parcels)
 			for (int i = 0; i < parcel.nPoints; i++)
 			{
-				SG.addPosition(parcel.boxPoints[i]);
+				SG.addPosition(parcel.polyPoints[i]);
 			}
 		
 		
