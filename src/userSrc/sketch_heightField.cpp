@@ -27,15 +27,15 @@ Alice::vec zVecToAliceVec(zVector& in)
     return Alice::vec(in.x, in.y, in.z);
 }
 
-bool pointInsidePolygon( zVector& pt,  std::vector<zVector>& poly)
+bool pointInsidePolygon(zVector& pt, std::vector<zVector>& poly)
 {
     int crossings = 0;
     int N = poly.size();
 
     for (int i = 0; i < N; ++i)
     {
-         zVector& a = poly[i];
-         zVector& b = poly[(i + 1) % N];
+        zVector& a = poly[i];
+        zVector& b = poly[(i + 1) % N];
 
         // Only consider edges crossing the horizontal line
         if (((a.y > pt.y) != (b.y > pt.y)))
@@ -51,7 +51,7 @@ bool pointInsidePolygon( zVector& pt,  std::vector<zVector>& poly)
     return (crossings % 2 == 1); // inside if odd
 }
 
-bool loadPolygonFromFile( std::string& filePath, std::vector<zVector>& polygon)
+bool loadPolygonFromFile(std::string& filePath, std::vector<zVector>& polygon)
 {
     polygon.clear();
     std::ifstream file(filePath);
@@ -167,7 +167,7 @@ void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
 
 
     // --------------- write file via filename overload ---
-     wchar_t* outfile = L"data/simplest_polyline.3dm";
+    wchar_t* outfile = L"data/simplest_polyline.3dm";
     bool ok = model.Write(outfile);             // writes using default/latest version
     // If you want a specific version (e.g., Rhino 6 = 60, 7 = 70) and your SDK supports it:
     // bool ok = model.Write(outfile, 60);
@@ -204,7 +204,7 @@ void shuffleSDFSamplePoints(std::vector<sdfSamples>& pts)
 // ------------------------------------------------------------
 // SGD training step: shuffle sdfSamplePoints + run your train logic
 // ------------------------------------------------------------
-void trainSGD(heightfieldNN& nn, vector<float> &dummyInput, vector<float>& dummyTarget, vector<float>& output, double &prevLoss, float& learningRate)
+void trainSGD(heightfieldNN& nn, vector<float>& dummyInput, vector<float>& dummyTarget, vector<float>& output, double& prevLoss, float& learningRate)
 {
     if (nn.sdfSamplePoints.empty())
     {
@@ -265,17 +265,17 @@ void trainSGD(heightfieldNN& nn, vector<float> &dummyInput, vector<float>& dummy
 // ------------------------------------------------------------
 // shortest path helper 
 // -
-void drawShortestPaths(vector< vector<zVector> > &allPaths)
+void drawShortestPaths(vector< vector<zVector> >& allPaths)
 {
-    for( auto &path : allPaths)
-    if (!path.empty())
-    {
-        glColor3f(0, 0, 1);
-        for (size_t i = 0; i < path.size() - 1; i++)
+    for (auto& path : allPaths)
+        if (!path.empty())
         {
-            drawLine(zVecToAliceVec(path[i]), zVecToAliceVec(path[i + 1]));
+            glColor3f(0, 0, 1);
+            for (size_t i = 0; i < path.size() - 1; i++)
+            {
+                drawLine(zVecToAliceVec(path[i]), zVecToAliceVec(path[i + 1]));
+            }
         }
-    }
 
 }
 // ------------------------- APP ----------------------------------
@@ -283,18 +283,23 @@ void drawShortestPaths(vector< vector<zVector> > &allPaths)
 // ------------------------- - ----------------------------------
 
 // -- height field
-HeightField2D myHeightField , myHeightField1 , myHeightField2;
+HeightField2D importedHeightField, siteHeightField;
 double threshold;
 
+// site definition
+
+float zRangeMin;
+std::vector<zVector> polygon;
+
 // -- height field nn
+
 heightfieldNN nn;
 vector<float> output;
-vector<float> dummyInput = { 1.0f };
+vector<float> dummyInput = { 0.0f };
 std::vector<float> dummyTarget = { 1.0f };; // unused
 
 float learningRate = 0.5f;
-float zRangeMin;
-std::vector<zVector> polygon;
+
 
 // -- parcels
 
@@ -318,81 +323,50 @@ zVector gradPt;
 
 void setup()
 {
-    
-  
-    
+
+
     S.numSliders = 0;
     S.addSlider(&threshold, "tv");// make a slider control for the variable called width;
     S.sliders[0].minVal = -1; // myHeightField.zScale * -1;
     S.sliders[0].maxVal = 1; //  myHeightField.zScale;
 
     // ----------- terrrain 
-    myHeightField = *new HeightField2D();
-    myHeightField1 = *new HeightField2D();
-    myHeightField2 = *new HeightField2D();
 
-    myHeightField.clearField();
-    myHeightField.readSamplesAndInterpolate(string("data/cabins_site.txt"));
-    zRangeMin = myHeightField.zMin;
+    importedHeightField = *new HeightField2D();
+    siteHeightField = *new HeightField2D();
 
-    myHeightField1.addCircleSDF(zVector(0, 0, 0), 4);
-    myHeightField2.addCircleSDF(zVector(0, 0, 0), 4); 
-    
+    importedHeightField.clearField();
+    importedHeightField.readSamplesAndInterpolate(string("data/cabins_site.txt"));
+    zRangeMin = importedHeightField.zMin;
+
     // ----------- terrain trim
 
     polygon.clear();
     loadPolygonFromFile(string("data/terrain_boundary_poly.txt"), polygon);
-    myHeightField.rescalePoints(polygon);
-    myHeightField.trimFieldWithPolygon(polygon);
-    
-    
-        
-  
-    myHeightField.computeGradient();
+    importedHeightField.rescalePoints(polygon);// scale polygon by same amount as height feild points.
+    importedHeightField.trimFieldWithPolygon(polygon);
+
+    importedHeightField.computeGradient();
+
     // ----------- NN ----------------
-   
+
     nn = heightfieldNN(30); // or however many poses you want
 
     //  ----- SDF loss polygon
+
     nn.setTargetPolygon(polygon);
     //nn.generateSDFSamplePointsFromPolygon();
 
-    //
-    dummyInput.clear();
-
-    for (int i = 0; i <  nn.n; i++)
-    {
-        dummyInput.push_back( 0 ); // x 
-        dummyInput.push_back( ofRandom(-1, 1) ); // y
-    }
-
-    nn.setInputSeeds(dummyInput);
+    // ----- reserve input and output dimensions
+    
+    dummyInput.assign(nn.inputDim, 0.0f);
     output = nn.forward(dummyInput);
 
-   
-    std::vector<float> y_pred = nn.forward(dummyInput);
-    printf("Pred: [");
-        for (float v : y_pred) printf("%.4f ", v);
-    printf("]\n");
 
     // ----------- parcels
 
     plots.clear();
     int id = 0;
-
-    /*for( int i = 0; i < 2; i+= 1)
-    {
-        for (int j = 0; j < 2; j++)
-        {
-            plot.centerOfBox = zVector(i * 20, j * 20, 0);
-            plot.directionOfBox = zVector(1, 1, 0);;
-            plot.setDefaultBox();
-            plot.transformBox();
-            plot.id_u = id++;
-            plots.push_back(plot);
-        }
-
-    }*/
 
     //
 
@@ -401,7 +375,7 @@ void setup()
 
 void update(int value)
 {
-    if ( compute ) keyPress('l', 0, 0);
+    if (compute) keyPress('l', 0, 0);
 }
 
 void draw()
@@ -410,20 +384,14 @@ void draw()
     drawGrid(50);
 
 
-    // ------ imported heightfield and sample points 
+    // ----------------------- imported heightfield and sample points 
 
 
-    myHeightField.drawSamplePoints();
-    
+     importedHeightField.drawSamplePoints();
+   //  myHeightField.drawFieldPoints(true, false);
+    // 
 
-    //myHeightField.computeGradient();
-   // myHeightField.drawFieldPoints(true, false);
-
-
-
-
-
-    // ---------parcels
+    // ----------------------- parcels
 
     for (auto& parcel : plots)parcel.display();
 
@@ -432,130 +400,77 @@ void draw()
         //SG.drawParticlesInBuckets();
     wireFrameOff();
 
-    // -- paths
+    // ----------------------- paths
        // myHeightField1.drawPath();
-    myHeightField1.drawFieldPoints(false, false);
+       // myHeightField1.drawFieldPoints(false, false);
     glLineWidth(5);
     drawShortestPaths(shortestPaths);
 
-   // ----------------------- nn
-  
-   nn.visualize(zVector(50, 350, 0), 200, 250);
-   nn.drawPolygon();
+    // ----------------------- nn
+
+    nn.visualize(zVector(50, 350, 0), 200, 250);
+    nn.drawPolygon();
 
 
-   std::vector<Pose2D> poses;
-   nn.extractPoses(output, poses, true);
-   //
-   /*vector<zVector> centers;
-   for( auto &pose : poses)centers.push_back(pose.c);
-   myHeightField1.drawStreamlinesFromSeeds(centers);*/
-   //
+    std::vector<Pose2D> poses;
+    nn.extractPoses(output, poses, true);
+    //
+    /*vector<zVector> centers;
+    for( auto &pose : poses)centers.push_back(pose.c);
+    myHeightField1.drawStreamlinesFromSeeds(centers);*/
+    //
 
-   glPointSize(5);
-   glColor3f(0, 0, 0);
-   for (auto& pose : poses)
-   {
-       drawPoint(zVecToAliceVec(pose.c ));
-      // drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + pose.v * 5.0));
-       zVector dir = myHeightField.gradientAt(pose.c);
-       dir.normalize();
-       drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + dir * 2.0));
+    glPointSize(5);
+    glColor3f(0, 0, 0);
+    for (auto& pose : poses)
+    {
+        drawPoint(zVecToAliceVec(pose.c));
+        // drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + pose.v * 5.0));
+        zVector dir = importedHeightField.gradientAt(pose.c);
+        dir.normalize();
+        drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + dir * 2.0));
 
-       drawCircle(zVecToAliceVec(pose.c), radius, 32);
-   }
-   glPointSize(1);
+        drawCircle(zVecToAliceVec(pose.c), radius, 32);
+    }
+    glPointSize(1);
 
-   setup2d();
+    setup2d();
 
         char s[200];
-          sprintf(s, "%.4f", prevLoss);
-         drawText(string(s), 50, 450);
+        sprintf(s, "%.4f", prevLoss);
+        drawText(string(s), 50, 450);
 
-   restore3d();
+    restore3d();
 
-
-
-    //{
-    //   // myHeightField.drawFieldPoints(false, false);
-    //   float ht = myHeightField.zMin;
-
-    //    glColor3f(0, 0, 0);
-    //    /*for (double tv = 0; tv < threshold; tv += 0.1)
-    //    {
-    //        float h = ofMap(tv, 0, 1, myHeightField.MLS_zMin, myHeightField.MLS_zMax);
-    //        
-    //        glPushMatrix();
-    //
-    //        {
-    //            glTranslatef(0.0f, 0.0f, h);
-    //            myHeightField.drawIsocontours(tv);
-    //        }
-    //        glPopMatrix();
-
-    //        
-    //    }*/
-
-    //    float iso = ofMap(zRangeMin, myHeightField.MLS_zMin, myHeightField.MLS_zMax, 0, 1);
-    //    //myHeightField.drawIsocontours(iso);
-    //   
-
-    //    /// ------
-    //    iso = ofMap(zRangeMin+1, myHeightField.MLS_zMin, myHeightField.MLS_zMax, 0, 1);
-    //    //myHeightField.drawIsocontours(iso);
-
-    //    glLineWidth(1);
-    //}
-
-    //glTranslatef(120, 0, 0);
-    //{
-    //   /* myHeightField1.drawFieldPoints(false, false);
-
-    //    glColor3f(0, 0, 0);
-    //    float iso = ofMap(0, myHeightField.MLS_zMin, myHeightField.MLS_zMax, 0, 1);
-    //    myHeightField1.drawIsocontours(iso);*/
-    //  
-    //}
-
-    //glTranslatef(120, 0, 0);
-    //{
-    //    myHeightField2.drawFieldPoints(false, false);
-
-    //    glColor3f(0, 0, 0);
-    //    float iso = ofMap(0, myHeightField.MLS_zMin, myHeightField.MLS_zMax, 0, 1);
-    //    myHeightField2.drawIsocontours(threshold);
-
-    //}
-
-    
 
 }
 
-int n = 0; 
+int n = 0;
 
 
 
 void keyPress(unsigned char k, int xm, int ym)
 {
-   
+
     if (k == 'g') // ----------paths
     {
-        myHeightField1.clearField();
+        siteHeightField.clearField();
         for (int i = 0; i < SF_RES; i++)
             for (int j = 0; j < SF_RES; j++)
-                myHeightField1.field[i][j] = myHeightField.field[i][j];
+                siteHeightField.field[i][j] = importedHeightField.field[i][j];
 
-        myHeightField1.trimFieldWithPolygon(nn.polygon);
+        siteHeightField.trimFieldWithPolygon(nn.polygon);
 
         std::vector<Pose2D> poses;
         nn.extractPoses(output, poses, true);
 
 
         //--
+
         vector<vector<zVector>> polys;
         for (auto& parcel : plots)
-            if( pointInsidePolygon(parcel.centerOfBox,nn.polygon) ) polys.push_back(parcel.polyPoints);
-        myHeightField1.scale_scalar_within_polygons(polys);
+            if (pointInsidePolygon(parcel.centerOfBox, nn.polygon)) polys.push_back(parcel.polyPoints);
+        siteHeightField.scale_scalar_within_polygons(polys);
 
         //
         shortestPaths.clear();
@@ -570,15 +485,15 @@ void keyPress(unsigned char k, int xm, int ym)
                 if (!pointInsidePolygon(str, nn.polygon))continue;
                 if (!pointInsidePolygon(end, nn.polygon))continue;
 
-                myHeightField1.findShortestPath(str, end);
+                siteHeightField.findShortestPath(str, end);
 
 
                 for (int i = 0; i < 5; i++)
                 {
-                    myHeightField1.smoothPath();
+                    siteHeightField.smoothPath();
                 }
 
-                shortestPaths.push_back(myHeightField1.lastShortestPath);
+                shortestPaths.push_back(siteHeightField.lastShortestPath);
             }
         }
     }
@@ -588,12 +503,12 @@ void keyPress(unsigned char k, int xm, int ym)
 
     if (k == '3')
     {
-        write_3DM(plots, myHeightField.scale, myHeightField.cDst,myHeightField.cSrc);
+        write_3DM(plots, importedHeightField.scale, importedHeightField.cDst, importedHeightField.cSrc);
     }
-    
-    
+
+
     // --------------- PARCELS  ---------------
-    
+
     if (k == 'p') // populate
     {
         polygon.clear();
@@ -601,9 +516,9 @@ void keyPress(unsigned char k, int xm, int ym)
 
         for (auto& pt : polygon)
         {
-            pt *= myHeightField.scale;
+            pt *= importedHeightField.scale;
         }
-        
+
         ///
         std::vector<Pose2D> poses;
         nn.extractPoses(output, poses, true);
@@ -611,11 +526,11 @@ void keyPress(unsigned char k, int xm, int ym)
         int id = 0;
 
         plots.clear();
-        for( auto &pose : poses)
+        for (auto& pose : poses)
         {
             plot.centerOfBox = pose.c;
 
-            zVector dir = myHeightField.gradientAt(pose.c);
+            zVector dir = importedHeightField.gradientAt(pose.c);
             dir.normalize();
             dir.z = 0;
             dir = dir ^ zVector(0, 0, 1);
@@ -627,14 +542,14 @@ void keyPress(unsigned char k, int xm, int ym)
             //plot.importPrimitive(polygon);
             plot.transformBox();
             plot.flipNormals();
-            
-            
+
+
             plot.id_u = id++;
             plots.push_back(plot);
         }
     }
 
-    
+
     if (k == 'e') // expand
     {
         for (auto& parcel : plots)parcel.expand_withNormalCheck(plots, true, &SG);
@@ -643,7 +558,7 @@ void keyPress(unsigned char k, int xm, int ym)
         for (auto& parcel : plots)parcel.smooth();
         for (auto& plot : plots)
             printf("%.4f \n", plot.computeParcelArea());
-       
+
 
         // ------------- update SG 
 
@@ -652,40 +567,42 @@ void keyPress(unsigned char k, int xm, int ym)
         SG.np = 0;
 
         // fill
-            for (auto& parcel : plots)
-                for (int i = 0; i < parcel.nPoints; i++)
-                {
-                    SG.addPosition(parcel.polyPoints[i]);
-                }
+        for (auto& parcel : plots)
+            for (int i = 0; i < parcel.nPoints; i++)
+            {
+                SG.addPosition(parcel.polyPoints[i]);
+            }
 
-            for( auto p : nn.polygon)SG.addPosition(p);
+        for (auto p : nn.polygon)SG.addPosition(p);
 
         // re-partition
         SG.PartitionParticlesToBuckets();
-        
+
     }
 
 
     if (k == 'o')
     {
-        plots[0].makeCentersEquiDistant(plots,nn.polygon);
+        plots[0].makeCentersEquiDistant(plots, nn.polygon);
     }
-    
-    // --------------- NUERAL NET  ---------------
+
+    // --------------- SITE DEFINITION AND NUERAL NET COVERAGE POLYGON  ---------------
 
 
-    if (k == '=') // get next cotnour polygon
+    if (k == '=') // get next contour polygon
     {
-       // nn.generateSamplesInRange(myHeightField, zRangeMin, zRangeMin+2);
+        // nn.generateSamplesInRange(myHeightField, zRangeMin, zRangeMin+2);
 
-         // -------- get contours and order then
+        // -------- get contours and order them
+
         zRangeMin += 1.0;
-        if (zRangeMin >= myHeightField.zMax)zRangeMin = myHeightField.zMin;
+        if (zRangeMin >= importedHeightField.zMax)zRangeMin = importedHeightField.zMin;
 
-       
-        float iso = ofMap(zRangeMin, myHeightField.MLS_zMin, myHeightField.MLS_zMax, 0, 1);
-        myHeightField.computeIsocontours(iso);
-        std::vector<std::vector<zVector>> contours = myHeightField.getOrderedContours();
+
+        float iso = ofMap(zRangeMin, importedHeightField.MLS_zMin, importedHeightField.MLS_zMax, 0, 1);
+        printf(" %.2f iso, %.2f zRangeMin, \n", iso, zRangeMin);
+        importedHeightField.computeIsocontours(iso);
+        std::vector<std::vector<zVector>> contours = importedHeightField.getOrderedContours();
 
 
         // -------- find contour island with most points
@@ -705,66 +622,31 @@ void keyPress(unsigned char k, int xm, int ym)
 
         cout << maxPts << " -- " << poly.size() << endl;
 
-
         // -------- if contour island is valid, set it as polygon for NN to cover with sites.
+
         if (poly.size() > 2)
         {
-            
-            nn.set_field_values_from_polygon(poly, myHeightField2);
-            myHeightField2.subtract(myHeightField1);
+            // -------- smooth contour
+            for (int i = 0; i < 15; i++) importedHeightField.smoothPath(poly);
 
-            nn.set_field_values_from_polygon(poly, myHeightField1);
-            
-            //myHeightField1.smoothDiffuseIsotropic();
-            //myHeightField1.smoothDiffuseIsotropic();
-            //myHeightField1.rescaleFieldToRange(-1, 1);
-           // myHeightField.rescaleFieldToRange(-1, 1);
-
-            // -----------
-
+            // -------- set contour as polygon of NN and generate sample points within
             nn.setTargetPolygon(poly);
             nn.generateSDFSamplePointsFromPolygon();
-            //nn.translate_SDFPolygon_and_samples_to_origin();
-          
+
         }
 
-       // cout << zRangeMin << " -- " << contours.size() << endl;
+        // cout << zRangeMin << " -- " << contours.size() << endl;
     }
+
+    // ---------------  NUERAL NET TRAINING  ---------------
 
     if (k == 'c')compute = !compute; // iteratively train NN to minimise loss function
-
-    if (k == 'u') runUnitTest(); // NN unit test to check if a default MLP, from which heighField_NN is derived converges
-
-    if (k == 'p')
-    {
-       
-        double alpha_base = 0.125;
-            double sigma_cells = 1.15;  // Gaussian splat radius in grid cells
-            double pin_threshold = 0.9;// fraction of max weight to pin (Dirichlet)
-            int max_iters = 1500;
-            double omega = 1.88;
-            double tol = 1e-4;
-
-        myHeightField.reconstruct_screened_poisson(alpha_base,sigma_cells,pin_threshold);
-        myHeightField.setGridPointHeights();
-    }
-
-    if (k == 's')
-    {
-        myHeightField.smoothDiffuseIsotropic(0.15, 1, true);
-        myHeightField1.smoothDiffuseAnisotropic(0.2, 1, 0.1, ScalarField2D::PMVariant::Exp, ScalarField2D::DiffuseDir::AlongIsophote, 2, true);
-    }
-
 
     if (k == 't')
     {
         // Forward pass
-       // std::vector<float> noisyInput = dummyInput;
-       // noisyInput[0] += ((float)rand() / RAND_MAX - 0.5f) * 0.1f;
-        //for (auto &x : dummyInput)x = ofRandom(-1, 1);
-        std::vector<float> y_pred = nn.forward(dummyInput);
 
-        //std::vector<float> y_pred = nn.forward(dummyInput);
+        std::vector<float> y_pred = nn.forward(dummyInput);
 
         // Loss
         float loss = nn.computeLoss(y_pred, dummyTarget);
@@ -774,9 +656,9 @@ void keyPress(unsigned char k, int xm, int ym)
         nn.computeGradient(dummyInput, dummyTarget, grad);
 
         // Backward update
-        printf(" %.4f,%.4f \n", fabs(loss - prevLoss), learningRate);
-        
-        if (fabs(loss - prevLoss) < 1e-2) learningRate *= 1.1; 
+        //printf(" %.4f,%.4f \n", fabs(loss - prevLoss), learningRate);
+
+        if (fabs(loss - prevLoss) < 1e-2) learningRate *= 1.1;
 
         learningRate = ofClamp(learningRate, 1e-2, 0.15);
         prevLoss = loss;
@@ -787,61 +669,38 @@ void keyPress(unsigned char k, int xm, int ym)
         output = y_pred;
 
         // Print output vector
-        printf("Loss: %.8f | Output: [", loss);
+        //printf("Loss: %.8f | Output: [", loss);
         /*for (int i = 0; i < y_pred.size(); ++i)
         {
             printf("%.4f", y_pred[i]);
             if (i < y_pred.size() - 1) printf(", ");
         }*/
-        printf("]\n");
+        //printf("]\n");
 
 
         //------------------------ 
-        std::vector<Pose2D> poses;
-        nn.extractPoses(output, poses, true); 
-        
-        zPointArray sites;
-        for (int i = 0; i < poses.size(); i++)
-                    sites.push_back(poses[i].c);
 
-        for (int i = 0; i < SF_RES; i++)
-            for (int j = 0; j < SF_RES; j++)
-                myHeightField2.field[i][j] = evalBlendedCircleSDF(myHeightField2.gridPoints[i][j], poses, radius);
-
-        myHeightField2.clearField();
-        myHeightField2.addVoronoi(sites);
-       ///myHeightField2.subtract(myHeightField1);
-       // myHeightField2.normalise();
-
-       
- 
-        //for (int i = 0; i < myHeightField2.RES; i++)
-        //{
-        //    for (int j = 0; j < myHeightField2.RES; j++)
-        //    {
-
-        //        zVector pt = myHeightField2.gridPoints[i][j];
-
-        //        float d_v = myHeightField2.field[i][j];
-        //        //float d_c = blendOrientedBoxSDFs(pt, centers, radii);; // blendCircleSDFs(pt, centers, radii, smoothK);//
-        //        float d_p = evalPolygonSDF(pt,nn.polygon) + 3;
-
-
-        //        myHeightField2.field[i][j] = min(d_v, -d_p); //  min(min(-d_v, d_c), -d_p); //  d_c;;/// min(d_c, -d_p); // min(d_v, -d_p);// min(min(-d_v, d_c), -d_p);
-        //        //generatedField_1.field[i][j] = min(generatedField_1.field[i][j], -d_p);
-        //    }
-        //}
-
-        //myHeightField2.rescaleFieldToRange(-1, 1);
-       
     }
 
+    // ---- Train SGD
 
     if (k == 'l')
     {
-        trainSGD(nn, dummyInput, dummyTarget,output,prevLoss, learningRate);
+        trainSGD(nn, dummyInput, dummyTarget, output, prevLoss, learningRate);
     }
+
+    // --------------- HEIGHT FIELD IMPORT  ---------------
+
+
+    if (k == 's')
+    {
+        importedHeightField.smoothDiffuseIsotropic(0.15, 1, true);
+        //myHeightField1.smoothDiffuseAnisotropic(0.2, 1, 0.1, ScalarField2D::PMVariant::Exp, ScalarField2D::DiffuseDir::AlongIsophote, 2, true);
+    }
+
+
     
+
 }
 
 void mousePress(int b, int state, int x, int y)

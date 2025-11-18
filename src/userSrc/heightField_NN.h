@@ -115,7 +115,6 @@ class heightfieldNN : public MLP
 public:
     int n = 4;
     std::vector<zVector> polygon;
-    std::vector<float> poseSeeds; // 2 floats per pose: x, y
     std::vector<sdfSamples> sdfSamplePoints;
     zVector sdfSample_centroid;
 
@@ -281,10 +280,6 @@ public:
         }
     }
 
-    void setInputSeeds( std::vector<float>& seeds)
-    {
-        poseSeeds = seeds;
-    }
 
     void setTargetPolygon( std::vector<zVector>& poly)
     {
@@ -413,66 +408,10 @@ public:
 
             sdfLoss /= sdfSamplePoints.size(); // average
 
-
         }
 
 
-
-        // -- Term 1: Repulsion (even spread); repulsion doesnt work as well for non-convex polygons
-        // https://chatgpt.com/s/t_690658c9da2c8191a2570cf2cebc09bf
-
-        /*float repulsion = 0.0f;
-        for (int i = 0; i < n; ++i)
-        {
-            for (int j = i + 1; j < n; ++j)
-            {
-                float d2 = poses[i].c.distanceTo(poses[j].c);
-                if (d2 > 1e-4f)
-                {
-                    repulsion += 1.0f / (1e-4f + d2 * d2);
-                }
-            }
-        }*/
-
-        // -- Term 2: Penalty for deviation from input seeds
-        float displacement = 0.0f;
-
-        if (poseSeeds.size() == 2 * n)
-        {
-            for (int i = 0; i < n; ++i)
-            {
-                zVector inputPos(poseSeeds[i * 2 + 0], poseSeeds[i * 2 + 1], 0);
-                float d = poses[i].c.distanceTo(inputPos * 100); // poses scaled in extractPoses
-                displacement += 1.0 / (d * d);
-            }
-        }
-
-        //-- Term 3: PIP penalty
-        float PIP_pen = 0;
-        for (int i = 0; i < n; ++i)
-        {
-            if (!pointInsidePolygon(poses[i].c, polygon))PIP_pen -= 0.1;
-        }
-
-        //-- Term 4 : pull to sdfSamples centroid
-
-        float minD = 1e6;
-        for (int i = 0; i < n; ++i)
-        {
-            minD += poses[i].c.distanceTo(sdfSample_centroid);// std::min(, minD);
-        }
-        //minD *= 0.1;
-        /// rescale ;
-        //sdfLoss /= 100;
-        /*displacement *= 100;
-        if (sdfLoss < 150)sdfLoss = 0;*/
-
-
-       // printf(" %.4f,%.4f,%.4f \n", sdfLoss, minD, PIP_pen);
-
-        //if (minD > 1) sdfLoss = minD;
-
-        return sdfLoss /*+ displacement + PIP_pen */;
+        return sdfLoss;
     }
 
     void computeGradient(std::vector<float>& x, std::vector<float>& y_dummy, std::vector<float>& gradOut) override

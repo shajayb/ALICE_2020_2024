@@ -405,12 +405,12 @@ public:
     }
 
     // Drop-in: smoother, artefact-free interpolation for contours sampled as dots.
-// Add inside HeightField2D and call instead of interpolateToGrid().
-//
-// Params:
-//   supportRadiusCells : kernel radius in *grid cells* (use 2.0–4.0)
-//   minNeighbors       : require this many points inside support
-//   eps                : tiny to avoid singularities
+    // Add inside HeightField2D and call instead of interpolateToGrid().
+    //
+    // Params:
+    //   supportRadiusCells : kernel radius in *grid cells* (use 2.0–4.0)
+    //   minNeighbors       : require this many points inside support
+    //   eps                : tiny to avoid singularities
 //
     void interpolateToGrid_MLS(double supportRadiusCells = 3.0,
         int    minNeighbors = 6,
@@ -708,7 +708,6 @@ public:
     }
 
 
-
     //------------------------------------------------------------
     // A* SHORTEST PATH ON field[][] USING 8-NEIGHBORS
     //------------------------------------------------------------
@@ -856,10 +855,10 @@ public:
         path = out;
     }
 
-
     //------------------------------------------------------------
     // DRAW PATH
     //------------------------------------------------------------
+ 
     void drawPth(std::vector<zVector>& path)
     {
         if (path.empty()) return;
