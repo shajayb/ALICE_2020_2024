@@ -67,8 +67,22 @@ enum class SMinMode
     CIRCULAR_GEOMETRIC
 };
 
+struct SkelNode
+{
+    zVector pos;
+    int degree;
+    int index;
+};
+
+struct SkelEdge
+{
+    int n0, n1;                    // node indices
+    std::vector<zVector> polyline; // ordered points
+};
+
+
 #define OUT 1e6
-#define SF_RES 128
+#define SF_RES 64
 
 class ScalarField2D
 {
@@ -214,6 +228,8 @@ public:
 
         rescaleFieldToRange(-1, 1);//closedfields rescale to -1,1
     }
+
+
 
     void addCircleSDFs(vector<zVector> rbfCenters, float radius = 2.0)
     {
@@ -472,137 +488,6 @@ public:
         printf(" min max field values after rescale %.2f, %.2f \n", minVal[0], maxVal[0]);
        // printf(" range1 range2 %.2f, %.2f \n", range[0], range[1]);
     }
-
-    //void rescaleFieldToRange(float targetMin = -1.0f, float targetMax = 1.0f)
-    //{
-    //    // --- Tunables to make behaviour stable across RES ---
-    //     float zeroEps = 1e-6f;                 // dead-band around zero to ignore tiny noise
-    //     int   N = std::max(1, RES * RES);
-    //     int   minCountForBin = std::max(1, N / 100); // at least ~1% of samples to call a bin "present"
-
-    //    // --- Pass 1: scan stats & robust sign counts (ignore |v| < zeroEps) ---
-    //    float minPos = 1e6f, maxPos = -1e6f;
-    //    float minNeg = 1e6f, maxNeg = -1e6f;
-    //    float gMin = 1e6f, gMax = -1e6f;
-    //    int   cntPos = 0, cntNeg = 0, cntZero = 0;
-    //    double sum = 0.0;
-
-    //    for (int i = 0; i < RES; ++i)
-    //    {
-    //        for (int j = 0; j < RES; ++j)
-    //        {
-    //            float v = field[i][j];
-    //            sum += v;
-
-    //            gMin = std::min(gMin, v);
-    //            gMax = std::max(gMax, v);
-
-    //            if (v > zeroEps)
-    //            {
-    //                ++cntPos;
-    //                minPos = std::min(minPos, v);
-    //                maxPos = std::max(maxPos, v);
-    //            }
-    //            else if (v < -zeroEps)
-    //            {
-    //                ++cntNeg;
-    //                minNeg = std::min(minNeg, v);
-    //                maxNeg = std::max(maxNeg, v);
-    //            }
-    //            else
-    //            {
-    //                ++cntZero; // near-zero bucket (pins to 0 in split mode)
-    //            }
-    //        }
-    //    }
-
-    //     bool hasPos = (cntPos >= minCountForBin);
-    //     bool hasNeg = (cntNeg >= minCountForBin);
-
-    //    // --- Case A: Mixed signs (robustly) -> split mapping, pin 0 to 0 ---
-    //    if (hasPos && hasNeg)
-    //    {
-    //        // include 0 as a bound so zero maps exactly to 0.0
-    //        float loPos = std::min(0.0f, minPos);
-    //        float hiPos = std::max(0.0f, maxPos);
-    //        float loNeg = std::min(minNeg, 0.0f);
-    //        float hiNeg = std::max(maxNeg, 0.0f);
-
-    //        float rangePos = std::max(hiPos - loPos, 1e-12f);
-    //        float rangeNeg = std::max(hiNeg - loNeg, 1e-12f);
-
-    //        for (int i = 0; i < RES; ++i)
-    //        {
-    //            for (int j = 0; j < RES; ++j)
-    //            {
-    //                float v = field[i][j];
-
-    //                if (v > zeroEps)          // positive bin => [0, +1]
-    //                {
-    //                    float t = (v - loPos) / rangePos;    // [0..1] with 0→0
-    //                    float n = std::clamp(t, 0.0f, 1.0f); // guard
-    //                    field[i][j] = targetMin + (targetMax - targetMin) * n; // [0..+1] if defaults
-    //                }
-    //                else if (v < -zeroEps)     // negative bin => [-1, 0]
-    //                {
-    //                    float t = (v - loNeg) / rangeNeg;    // [0..1] with 0→1
-    //                    float n = std::clamp(t, 0.0f, 1.0f);
-    //                    // map [0..1] so that loNeg -> -1, 0 -> 0
-    //                    float nSplit = -1.0f + n;            // [ -1 .. 0 ]
-    //                    field[i][j] = targetMin + (targetMax - targetMin) * ((nSplit + 1.0f) * 0.5f * 2.0f - 1.0f + 1.0f);
-    //                    // simpler: directly map nSplit ∈ [-1,0] to [targetMin, 0]:
-    //                    field[i][j] = ((nSplit + 1.0f) * 0.5f) * 0.0f +   // weight for 0  (drops out)
-    //                        (1.0f - ((nSplit + 1.0f) * 0.5f)) * targetMin; // maps -1->targetMin, 0->0
-    //                    // cleaner direct linear form:
-    //                    field[i][j] = targetMin * (1.0f - n) + 0.0f * n;     // loNeg->-1, 0->0
-    //                }
-    //                else                        // near zero -> exactly 0
-    //                {
-    //                    field[i][j] = 0.0f;
-    //                }
-    //            }
-    //        }
-
-    //        // Ensure exact endpoints reach targetMin/Max (if present)
-    //        // (Optional: no-op if data contains those extrema)
-
-    //        printf("rescaleFieldToRange: split mode | cntNeg=%d cntZero=%d cntPos=%d  "
-    //            "neg[%.6f,%.6f] pos[%.6f,%.6f]\n",
-    //            cntNeg, cntZero, cntPos, minNeg, maxNeg, minPos, maxPos);
-    //        return;
-    //    }
-
-    //    // --- Case B: Single-sign (or effectively single-sign) -> mean-center then map centred extrema to [-1,+1]
-    //     float mean = static_cast<float>(sum / N);
-
-    //    float cmin = 1e6f, cmax = -1e6f;
-    //    for (int i = 0; i < RES; ++i)
-    //    {
-    //        for (int j = 0; j < RES; ++j)
-    //        {
-    //            float c = field[i][j] - mean;   // center by mean
-    //            cmin = std::min(cmin, c);
-    //            cmax = std::max(cmax, c);
-    //        }
-    //    }
-
-    //    float denom = std::max(cmax - cmin, 1e-12f); // guard ant field
-
-    //    for (int i = 0; i < RES; ++i)
-    //    {
-    //        for (int j = 0; j < RES; ++j)
-    //        {
-    //            float c = field[i][j] - mean;           // centered value
-    //            float t = (c - cmin) / denom;           // [0..1]
-    //            float n = t * 2.0f - 1.0f;              // [-1..+1] exact at extrema
-    //            // Map to [targetMin, targetMax]
-    //            field[i][j] = targetMin + ((n + 1.0f) * 0.5f) * (targetMax - targetMin);
-    //        }
-    //    }
-
-    //    printf("rescaleFieldToRange: single-sign mode | mean=%.6f  cmin=%.6f  cmax=%.6f\n",
-    //        mean, cmin, cmax);
-    //}
 
 
     // -----------------------------------------
@@ -875,7 +760,7 @@ public:
             {
                 float dx = (field[i + 1][j] - field[i - 1][j]) * 0.5f;
                 float dy = (field[i][j + 1] - field[i][j - 1]) * 0.5f;
-                gradient[i][j] = zVector(dx, dy, 0) ^ zVector(0,0,1);
+                gradient[i][j] = zVector(dx, dy, 0) * -1;;//^ zVector(0, 0, 1);
                 gradient[i][j].normalize();
             }
         }
@@ -955,90 +840,113 @@ public:
         }
     }
 
-    void computeIsocontours( float threshold)
+    void computeIsocontours(float threshold)
     {
         isolines.clear();
-        
-
-        for (int i = 0; i < SF_RES - 1; i++)
-        {
-            for (int j = 0; j < SF_RES - 1; j++)
-            {
-                zVector quadPts[4] = {
-                    gridPoints[i][j],
-                    gridPoints[i + 1][j],
-                    gridPoints[i][j + 1],
-                    gridPoints[i + 1][j + 1]
-                };
-
-                float quadVals[4] = {
-                    field[i][j],
-                    field[i + 1][j],
-                    field[i][j + 1],
-                    field[i + 1][j + 1]
-                };
-
-                zVector tri1Pts[3] = { quadPts[0], quadPts[1], quadPts[2] };
-                float tri1Vals[3] = { quadVals[0], quadVals[1], quadVals[2] };
-
-                zVector tri2Pts[3] = { quadPts[1], quadPts[2], quadPts[3] };
-                float tri2Vals[3] = { quadVals[1], quadVals[2], quadVals[3] };
-
-                processTriangle(tri1Pts, tri1Vals, threshold, isolines);
-                processTriangle(tri2Pts, tri2Vals, threshold, isolines);
-            }
-        }
+        computeIsocontours(threshold, isolines);
     }
 
     void computeIsocontours(float threshold, std::vector<std::pair<zVector, zVector>>& output)
     {
+        // Helper: Linear interpolation along an edge (correct for Bilinear patch boundaries)
+        auto getT = [&](float v1, float v2) -> float {
+            if (std::abs(v2 - v1) < 1e-6f) return 0.5f;
+            return (threshold - v1) / (v2 - v1);
+            };
+
+        // Helper: Process a single quad (Marching Squares Logic)
+        auto processSubQuad = [&](zVector pts[4], float vals[4])
+            {
+                int caseId = 0;
+                if (vals[0] >= threshold) caseId |= 1; // BL
+                if (vals[1] >= threshold) caseId |= 2; // BR
+                if (vals[2] >= threshold) caseId |= 4; // TR
+                if (vals[3] >= threshold) caseId |= 8; // TL
+
+                if (caseId == 0 || caseId == 15) return;
+
+                auto lerpPos = [&](int a, int b) {
+                    float t = getT(vals[a], vals[b]);
+                    return pts[a] + (pts[b] - pts[a]) * t;
+                    };
+
+                // Edges: 0:Bottom, 1:Right, 2:Top, 3:Left
+                switch (caseId)
+                {
+                case 1:  output.emplace_back(lerpPos(0, 3), lerpPos(0, 1)); break;
+                case 2:  output.emplace_back(lerpPos(0, 1), lerpPos(1, 2)); break;
+                case 3:  output.emplace_back(lerpPos(0, 3), lerpPos(1, 2)); break;
+                case 4:  output.emplace_back(lerpPos(1, 2), lerpPos(2, 3)); break;
+                case 5:  output.emplace_back(lerpPos(0, 3), lerpPos(0, 1)); output.emplace_back(lerpPos(1, 2), lerpPos(2, 3)); break; // Saddle
+                case 6:  output.emplace_back(lerpPos(0, 1), lerpPos(2, 3)); break;
+                case 7:  output.emplace_back(lerpPos(0, 3), lerpPos(2, 3)); break;
+                case 8:  output.emplace_back(lerpPos(0, 3), lerpPos(2, 3)); break;
+                case 9:  output.emplace_back(lerpPos(0, 1), lerpPos(2, 3)); break;
+                case 10: output.emplace_back(lerpPos(0, 3), lerpPos(2, 3)); output.emplace_back(lerpPos(0, 1), lerpPos(1, 2)); break; // Saddle
+                case 11: output.emplace_back(lerpPos(1, 2), lerpPos(2, 3)); break;
+                case 12: output.emplace_back(lerpPos(0, 3), lerpPos(1, 2)); break;
+                case 13: output.emplace_back(lerpPos(0, 1), lerpPos(1, 2)); break;
+                case 14: output.emplace_back(lerpPos(0, 3), lerpPos(0, 1)); break;
+                }
+            };
+
         for (int i = 0; i < SF_RES - 1; i++)
         {
             for (int j = 0; j < SF_RES - 1; j++)
             {
-                zVector p[4] = {
-                    gridPoints[i][j],
-                    gridPoints[i + 1][j],
-                    gridPoints[i + 1][j + 1],
-                    gridPoints[i][j + 1]
-                };
+                // 1. Get main grid values
+                float vBL = field[i][j];
+                float vBR = field[i + 1][j];
+                float vTR = field[i + 1][j + 1];
+                float vTL = field[i][j + 1];
 
-                float v[4] = {
-                    field[i][j],
-                    field[i + 1][j],
-                    field[i + 1][j + 1],
-                    field[i][j + 1]
-                };
+                // Optimization: Skip if cell is fully clear
+                float mn = std::min({ vBL, vBR, vTR, vTL });
+                float mx = std::max({ vBL, vBR, vTR, vTL });
+                if (threshold < mn || threshold > mx) continue;
 
-                auto addLine = [&](zVector a, zVector b, float va, float vb)
-                    {
-                        if ((va < threshold && vb >= threshold) || (vb < threshold && va >= threshold))
-                        {
-                            float t = (threshold - va) / (vb - va);
-                            output.emplace_back(a + (b - a) * t, zVector());  // start pt added
-                        }
-                    };
+                // 2. Calculate Bilinear Sub-points
+                // Center value of a bilinear patch is exactly the average of corners
+                float vC = (vBL + vBR + vTR + vTL) * 0.25f;
+                float vBot = (vBL + vBR) * 0.5f;
+                float vTop = (vTL + vTR) * 0.5f;
+                float vLeft = (vBL + vTL) * 0.5f;
+                float vRight = (vBR + vTR) * 0.5f;
 
-                std::vector<zVector> pts;
-                for (int k = 0; k < 4; k++)
-                {
-                    int next = (k + 1) % 4;
-                    if ((v[k] < threshold && v[next] >= threshold) ||
-                        (v[next] < threshold && v[k] >= threshold))
-                    {
-                        float t = (threshold - v[k]) / (v[next] - v[k]);
-                        pts.push_back(p[k] + (p[next] - p[k]) * t);
-                    }
-                }
+                zVector pBL = gridPoints[i][j];
+                zVector pBR = gridPoints[i + 1][j];
+                zVector pTR = gridPoints[i + 1][j + 1];
+                zVector pTL = gridPoints[i][j + 1];
 
-                if (pts.size() == 2)
-                {
-                    output.emplace_back(pts[0], pts[1]);
-                }
+                zVector pC = (pBL + pBR + pTR + pTL) * 0.25f;
+                zVector pBot = (pBL + pBR) * 0.5f;
+                zVector pTop = (pTL + pTR) * 0.5f;
+                zVector pLeft = (pBL + pTL) * 0.5f;
+                zVector pRight = (pBR + pTR) * 0.5f;
+
+                // 3. Process 4 sub-quadrants
+                // Sub-quad 1: Bottom-Left
+                zVector sq1_pts[4] = { pBL, pBot, pC, pLeft };
+                float sq1_vals[4] = { vBL, vBot, vC, vLeft };
+                processSubQuad(sq1_pts, sq1_vals);
+
+                // Sub-quad 2: Bottom-Right
+                zVector sq2_pts[4] = { pBot, pBR, pRight, pC };
+                float sq2_vals[4] = { vBot, vBR, vRight, vC };
+                processSubQuad(sq2_pts, sq2_vals);
+
+                // Sub-quad 3: Top-Right
+                zVector sq3_pts[4] = { pC, pRight, pTR, pTop };
+                float sq3_vals[4] = { vC, vRight, vTR, vTop };
+                processSubQuad(sq3_pts, sq3_vals);
+
+                // Sub-quad 4: Top-Left
+                zVector sq4_pts[4] = { pLeft, pC, pTop, pTL };
+                float sq4_vals[4] = { vLeft, vC, vTop, vTL };
+                processSubQuad(sq4_pts, sq4_vals);
             }
         }
     }
-
 
     std::vector<std::vector<zVector>> getOrderedContours(float tolerance = 1e-4f)
     {
@@ -1111,6 +1019,521 @@ public:
 
  
     //---------------------------------------------
+
+    // -----------------------------------------------------------------------------
+    // High-Fidelity Medial Axis Extraction
+    // Ported from JS 'isRidgeAtPoint(px, py)' logic
+    // -----------------------------------------------------------------------------
+    std::vector<zVector> medialPoints;
+    
+
+    std::vector<zVector> computeMedialAxis(
+        float gradientStep = 1.0f,
+        float gradientThreshold = 0.7f
+    )
+    {
+        medialPoints.clear();
+        medialPoints.reserve(SF_RES * SF_RES / 10);
+        const float h = gradientStep;
+
+        auto sample = [&](float x, float y)
+            {
+                return sampleAt(x, y);
+            };
+
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                zVector p = gridPoints[i][j];
+                float px = p.x;
+                float py = p.y;
+
+                float d_c = field[i][j];
+                if (d_c >= 0) continue;                // JS version: only check inside
+
+                // central SDF value
+                float d_px = sample(px + h, py);
+                float d_nx = sample(px - h, py);
+                float d_py = sample(px, py + h);
+                float d_ny = sample(px, py - h);
+
+                // Forward/backward finite differences
+                float gx_pos = (d_px - d_c) / h;
+                float gx_neg = (d_c - d_nx) / h;
+
+                float gy_pos = (d_py - d_c) / h;
+                float gy_neg = (d_c - d_ny) / h;
+
+                bool ridge =
+                    (fabs(gx_pos - gx_neg) > gradientThreshold) ||
+                    (fabs(gy_pos - gy_neg) > gradientThreshold);
+
+                if (ridge)
+                {
+                    medialPoints.push_back(p);
+                }
+            }
+        }
+
+        return medialPoints;
+    }
+
+    // ======================================================================
+//  Topology-Preserving Skeletonization (Zhang–Suen Thinning)
+//  Produces a 1-pixel-wide medial axis for the ScalarField's binary mask
+// ======================================================================
+
+    std::vector<zVector> computeSkeleton(float iso = 0.0f)
+    {
+        // Step 1: Build binary mask from SDF
+        std::vector<uint8_t> mask(SF_RES * SF_RES, 0);
+        auto IDX = [&](int i, int j) { return i * SF_RES + j; };
+
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                mask[IDX(i, j)] = (field[i][j] <= iso) ? 1 : 0;
+            }
+        }
+
+        // 8-neighbour offsets
+        const int dx[8] = { 0,  1, 1, 1,  0, -1, -1, -1 };
+        const int dy[8] = { 1,  1, 0, -1, -1, -1,  0,  1 };
+
+        auto neighbourCount = [&](int x, int y)
+            {
+                int c = 0;
+                for (int k = 0; k < 8; k++)
+                {
+                    int nx = x + dx[k], ny = y + dy[k];
+                    if (nx >= 0 && nx < SF_RES && ny >= 0 && ny < SF_RES)
+                        c += mask[IDX(nx, ny)];
+                }
+                return c;
+            };
+
+        auto transitions = [&](int x, int y)
+            {
+                // Count 0→1 transitions in ordered neighbour cycle
+                int t = 0;
+                for (int k = 0; k < 8; k++)
+                {
+                    int k2 = (k + 1) % 8;
+
+                    int a = 0, b = 0;
+                    int nx1 = x + dx[k], ny1 = y + dy[k];
+                    int nx2 = x + dx[k2], ny2 = y + dy[k2];
+
+                    if (nx1 >= 0 && nx1 < SF_RES && ny1 >= 0 && ny1 < SF_RES) a = mask[IDX(nx1, ny1)];
+                    if (nx2 >= 0 && nx2 < SF_RES && ny2 >= 0 && ny2 < SF_RES) b = mask[IDX(nx2, ny2)];
+
+                    if (a == 0 && b == 1) t++;
+                }
+                return t;
+            };
+
+        bool changed = true;
+
+        // Temporary list of pixels to delete
+        std::vector<std::pair<int, int>> toDelete;
+
+        // ============================================================
+        // Main thinning loop: two sub-iterations per Zhang–Suen step
+        // ============================================================
+        while (changed)
+        {
+            changed = false;
+            toDelete.clear();
+
+            // -------------------
+            // Sub-iteration 1
+            // -------------------
+            for (int i = 1; i < SF_RES - 1; i++)
+            {
+                for (int j = 1; j < SF_RES - 1; j++)
+                {
+                    if (mask[IDX(i, j)] == 0) continue;
+
+                    int N = neighbourCount(i, j);
+                    if (N < 2 || N > 6) continue;
+
+                    int T = transitions(i, j);
+                    if (T != 1) continue;
+
+                    // 4 specific neighbour constraints
+                    int p2 = mask[IDX(i, j + 1)];
+                    int p4 = mask[IDX(i + 1, j)];
+                    int p6 = mask[IDX(i, j - 1)];
+                    int p8 = mask[IDX(i - 1, j)];
+
+                    if (p2 * p4 * p6 != 0) continue;
+                    if (p4 * p6 * p8 != 0) continue;
+
+                    toDelete.push_back({ i,j });
+                }
+            }
+
+            if (!toDelete.empty())
+            {
+                changed = true;
+                for (auto& p : toDelete) mask[IDX(p.first, p.second)] = 0;
+            }
+
+            toDelete.clear();
+
+            // -------------------
+            // Sub-iteration 2
+            // -------------------
+            for (int i = 1; i < SF_RES - 1; i++)
+            {
+                for (int j = 1; j < SF_RES - 1; j++)
+                {
+                    if (mask[IDX(i, j)] == 0) continue;
+
+                    int N = neighbourCount(i, j);
+                    if (N < 2 || N > 6) continue;
+
+                    int T = transitions(i, j);
+                    if (T != 1) continue;
+
+                    int p2 = mask[IDX(i, j + 1)];
+                    int p4 = mask[IDX(i + 1, j)];
+                    int p6 = mask[IDX(i, j - 1)];
+                    int p8 = mask[IDX(i - 1, j)];
+
+                    if (p2 * p4 * p8 != 0) continue;
+                    if (p2 * p6 * p8 != 0) continue;
+
+                    toDelete.push_back({ i,j });
+                }
+            }
+
+            if (!toDelete.empty())
+            {
+                changed = true;
+                for (auto& p : toDelete) mask[IDX(p.first, p.second)] = 0;
+            }
+        }
+
+        // ============================================================
+        // Pack the final 1-pixel skeleton into world coordinates
+        // ============================================================
+        std::vector<zVector> skeleton;
+
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                if (mask[IDX(i, j)] == 1)
+                {
+                    skeleton.push_back(gridPoints[i][j]);
+                }
+            }
+        }
+
+        return skeleton;
+    }
+
+    // ======================================================================
+    // Convert skeleton pixels to graph structure
+    // skeletonPts is output of computeSkeleton()
+    // ======================================================================
+
+    void buildSkeletonGraph(
+        const std::vector<zVector>& skeletonPts,
+        std::vector<SkelNode>& nodes,
+        std::vector<SkelEdge>& edges)
+    {
+        const float eps = 0.01f;
+
+        // ---- Build a fast lookup: map grid coordinate → index ----
+        std::unordered_map<long long, int> lookup;
+
+        auto hash = [&](int i, int j)
+            {
+                return (long long)i << 32 | (unsigned long long)j;
+            };
+
+        // Convert world coord → grid coord
+        auto toGrid = [&](const zVector& p, int& i, int& j)
+            {
+                float span = 100.0f;
+                float step = span / (SF_RES - 1);
+
+                i = int((p.x + 50.0f) / step + 0.5f);
+                j = int((p.y + 50.0f) / step + 0.5f);
+                i = std::max(0, std::min(i, SF_RES - 1));
+                j = std::max(0, std::min(j, SF_RES - 1));
+            };
+
+        int N = skeletonPts.size();
+        std::vector<int> gi(N), gj(N);
+
+        for (int k = 0; k < N; k++)
+        {
+            int i, j;
+            toGrid(skeletonPts[k], i, j);
+            gi[k] = i;
+            gj[k] = j;
+            lookup[hash(i, j)] = k;
+        }
+
+        // ---- Compute degree of each skeleton pixel ----
+        std::vector<int> degree(N, 0);
+
+        for (int k = 0; k < N; k++)
+        {
+            int i = gi[k];
+            int j = gj[k];
+
+            for (int di = -1; di <= 1; di++)
+                for (int dj = -1; dj <= 1; dj++)
+                {
+                    if (di == 0 && dj == 0) continue;
+
+                    long long h = hash(i + di, j + dj);
+                    if (lookup.count(h))
+                        degree[k]++;
+                }
+        }
+
+        // ---- Identify node pixels: endpoints or junctions ----
+        std::vector<bool> isNode(N, false);
+        for (int k = 0; k < N; k++)
+        {
+            if (degree[k] != 2)  // endpoint OR branch
+                isNode[k] = true;
+        }
+
+        // ---- Assign node indices ----
+        nodes.clear();
+        std::vector<int> nodeIndex(N, -1);
+
+        for (int k = 0; k < N; k++)
+        {
+            if (isNode[k])
+            {
+                SkelNode nd;
+                nd.pos = skeletonPts[k];
+                nd.degree = degree[k];
+                nd.index = nodes.size();
+
+                nodes.push_back(nd);
+                nodeIndex[k] = nd.index;
+            }
+        }
+
+        // ---- Trace edges ----
+        edges.clear();
+        std::vector<bool> visited(N, false);
+
+        auto neighbors = [&](int idx)
+            {
+                std::vector<int> out;
+                int i = gi[idx], j = gj[idx];
+
+                for (int di = -1; di <= 1; di++)
+                    for (int dj = -1; dj <= 1; dj++)
+                    {
+                        if (di == 0 && dj == 0) continue;
+
+                        long long h = hash(i + di, j + dj);
+                        if (lookup.count(h))
+                            out.push_back(lookup[h]);
+                    }
+                return out;
+            };
+
+        // For each node pixel, walk along degree-2 pixels until next node
+        for (int k = 0; k < N; k++)
+        {
+            if (!isNode[k]) continue;
+
+            auto nbrs = neighbors(k);
+
+            for (int nb : nbrs)
+            {
+                if (visited[nb]) continue;
+
+                // begin new edge
+                SkelEdge e;
+                e.n0 = nodeIndex[k];
+                e.polyline.push_back(skeletonPts[k]);
+
+                int cur = nb;
+                int prev = k;
+
+                while (true)
+                {
+                    visited[cur] = true;
+                    e.polyline.push_back(skeletonPts[cur]);
+
+                    if (isNode[cur])   // reached endpoint or junction
+                    {
+                        e.n1 = nodeIndex[cur];
+                        break;
+                    }
+
+                    // continue along degree-2 chain
+                    auto nbr2 = neighbors(cur);
+                    int next = -1;
+                    for (int x : nbr2)
+                        if (x != prev) next = x;
+
+                    if (next == -1) break; // dead end (should not occur)
+                    prev = cur;
+                    cur = next;
+                }
+
+                edges.push_back(e);
+            }
+        }
+    }
+
+    // --------------------------------------------
+
+    // Add this helper function inside the ScalarField2D class
+
+    // Implementation of Figure 4: Binary search for the medial point along the segment PQ.
+    // It uses the SDF to approximate the 'maximal ball' check.
+    zVector computeMedialPoint(zVector P, zVector Q, float EPSILON = 1e-4f)
+    {
+        // The basePoint P in Figure 4 is the starting point on the boundary (or the ray cast origin).
+        // In this adaptive version, P and Q are points defining the segment to search.
+        zVector basePoint = P;
+
+        // Check if the segment is negligible from the start
+        if ((Q - P).length() < EPSILON) return P;
+
+        zVector midPoint = (P + Q) * 0.5f;
+
+        // Radius is the distance from the midpoint (potential center) back to the boundary point P.
+        // NOTE: This assumes P is on the boundary, which is the definition in the paper.
+        float radius = (midPoint - P).length();
+
+        // Binary search loop
+        while ((Q - P).length() > EPSILON)
+        {
+            // Adaptation of mesh.containsBall(midPoint, radius) using SDF:
+            // A ball is contained if the distance from the center (midPoint) to the boundary
+            // is greater than or equal to the ball's radius R. The distance is -SDF(midPoint).
+            // We use sampleAt to get the SDF value at the midpoint's location.
+            // float sdf_at_midpoint = sampleAt(midPoint.x, midPoint.y);
+
+            // --- NOTE: In the paper's context, the radius R must be the distance from M to P.
+            //           For an inscribed ball, R = -SDF(M). We check if R_to_P is valid.
+            // We will use the SDF value at the midpoint as the maximal possible radius at that center.
+
+            float maximalRadius = -sampleAt(midPoint.x, midPoint.y);
+
+            // The condition for the medial axis point search is: 
+            // If the ball with radius R (distance to P) is contained, the true maximal ball center 
+            // must lie further down the segment (toward Q). If not, the center is closer to P.
+
+            // This is a simplified containment check. A true maximal ball center M is where 
+            // R_M = -SDF(M). In a linear search, we check if R_to_P <= -SDF(M).
+            if (radius <= maximalRadius) // If the ball is contained/smaller than maximal
+            {
+                // Grow: Move P towards Q (midPoint becomes the new lower bound)
+                P = midPoint;
+            }
+            else
+            {
+                // Shrink: Move Q towards P (midPoint becomes the new upper bound)
+                Q = midPoint;
+            }
+
+            // Update midPoint and radius for the next iteration
+            midPoint = (P + Q) * 0.5f;
+            radius = (midPoint - basePoint).length();
+        }
+
+        // The point P (which now approximates Q and midPoint) is the center of the maximal ball.
+        // The radius is tracked for the Medial Axis Transform (MAT).
+        // Since we don't have the internal structure for zVector/Point, we return the point.
+        // midPoint.setRadius (radius)
+        return midPoint;
+    }
+
+    // Add this high-level function inside the ScalarField2D class
+
+// Implementation of Figure 3: Fast sampling-based algorithm (adapted for SDF).
+// Since mesh sampling/ray intersection is unavailable, we must estimate P and Q.
+// We approximate the ray-mesh-intersection-based P and Q with a simple ray test 
+// from a boundary point (P) inward to a deep interior point (Q).
+    std::vector<zVector> computeMedialAxisSampling(int numSamples, float step = 10.0f)
+    {
+        // Clear previous results
+        medialPoints.clear();
+        medialPoints.reserve(numSamples);
+
+        // This is a very rough substitute for mesh boundary sampling and intersection.
+        // We sample on the iso-contour and shoot a ray inward.
+        // NOTE: This requires computeIsocontours(0.0) to be called first to get boundary lines.
+
+        // We will use the boundary lines (isolines) found by computeIsocontours(0.0) as the 'mesh'.
+        if (isolines.empty())
+        {
+            // Recompute the boundary if needed (assuming 0.0 is the boundary/iso-surface)
+            computeIsocontours(0.0f);
+        }
+
+        if (isolines.empty()) return medialPoints;
+
+        // Estimate the total length for proportional sampling
+        float totalLength = 0.0f;
+        for ( auto& segment : isolines)
+        {
+            totalLength += (segment.second - segment.first).length();
+        }
+        if (totalLength < 1e-6f) return medialPoints;
+
+        // --- Adaptive Sampling Loop ---
+        for (int i = 0; i < numSamples; i++)
+        {
+            // 1. Estimate mesh.getRandomFace() and f.getRandomPoint(): 
+            //    Select a random point P on the boundary (a random isoline segment).
+            float target = ((float)std::rand() / RAND_MAX) * totalLength;
+            float currentLength = 0.0f;
+            zVector P, inwardNormal;
+
+            for ( auto& segment : isolines)
+            {
+                float segLen = (segment.second - segment.first).length();
+                if (target < currentLength + segLen)
+                {
+                    float t = (target - currentLength) / segLen;
+                    P = segment.first + (segment.second - segment.first) * t;
+
+                    // Estimate inward normal (gradient points outward for SDF inside < 0)
+                    inwardNormal = gradientAt(P) * -1;
+                    inwardNormal.normalize();
+
+                    break;
+                }
+                currentLength += segLen;
+            }
+
+            // If P is not found (shouldn't happen), skip
+            if (P.length() == 0 && i > 0) continue;
+
+            // 2. Estimate mesh.getIntersection(r):
+            //    We simply shoot a fixed-length ray inward to a deep interior point Q.
+            //    The maximal ball center MUST lie on the segment PQ.
+            zVector Q = P + inwardNormal * step; // 'step' is a large distance inward
+
+            // 3. Compute Medial Point using Binary Search
+            zVector medialPoint = computeMedialPoint(P, Q, 1e-4f);
+
+            medialPoints.push_back(medialPoint);
+        }
+
+        return medialPoints;
+    }
+
+    // --------------------------------------------
 
     void smoothContourAdaptive(std::vector<zVector>& contour, int iterations = 1, bool preserveEnds = true, float angleThreshold = 15.0f)
     {
@@ -1199,6 +1622,8 @@ public:
             for (int j = 0; j < SF_RES; j++)
             {
                 float f = field[i][j];
+                    if (f > 1e2) continue;
+
                 float r, g, b;
                 getJetColor(f, r, g, b);
 
@@ -1230,7 +1655,7 @@ public:
 
         computeIsocontours(threshold);
 
-       // glColor3f(0.1, 0, 0);
+        glColor3f(0, 0, 0);
         if (draw)
             for (auto& segment : isolines)
             {

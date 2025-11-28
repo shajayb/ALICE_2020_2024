@@ -32,6 +32,12 @@
       <Filter>IMP_SKETCHES</Filter>
     </ClInclude>
     <ClInclude Include="src\userSrc\parcel_vector.h" />
+    <ClInclude Include="src\userSrc\genericMLP_momentum.h">
+      <Filter>IMP_SKETCHES</Filter>
+    </ClInclude>
+    <ClInclude Include="src\userSrc\heightField_NN_momentum.h">
+      <Filter>IMP_SKETCHES</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="MVC">
@@ -102,5 +108,6 @@
     <ClCompile Include="src\userSrc\sketch_DCT2_FIXED_BLOCK_LAYOUT.cpp">
       <Filter>SDF_DCT2_AE</Filter>
     </ClCompile>
+    <ClCompile Include="src\userSrc\sketch_RBF_medial.cpp" />
   </ItemGroup>
 </Project>

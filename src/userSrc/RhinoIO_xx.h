@@ -1,14 +1,8 @@
 #pragma once
 
 // -------------------- OPENNURBS --------------------
-
-
-//#pragma comment(lib, "C:\\Users\\shajay.b\\Downloads\\Alice2020_Rhino_ScalarField\\src\\openNurbs\\opennurbs_public.lib")
-#pragma comment(lib, "..\\..\\..\\src\\openNurbs\\opennurbs_public.lib")
-//src/openNurbs
-
 #define OPENNURBS_IMPORTS
-#include "openNurbs/opennurbs_public.h"
+#include "opennurbs_public.h"
 
 // -------------------- SYSTEM ------------------------
 #include <string>
@@ -58,20 +52,13 @@ public:
             wprintf(L"[RhinoIO] ERROR: Cannot open file %ls\n", filePath.c_str());
             return false;
         }
-        else
-        {
-            wprintf(L"[RhinoIO] opened file %ls\n", filePath.c_str());
-        }
+
         ON_TextLog dump;
         ON_BinaryFile archive(ON::archive_mode::read3dm, archive_fp);
 
         bool rc = model.Read(archive, &dump);
 
-        int ok = ON::CloseFile(archive_fp);
-
-        rc ? wprintf(L"[RhinoIO] read file %ls\n", filePath.c_str()) : wprintf(L"[RhinoIO] unable to read file %ls\n", filePath.c_str());;
-        ok ? wprintf(L"[RhinoIO] closed file %ls\n", filePath.c_str()) : wprintf(L"[RhinoIO] unable to close file %ls\n", filePath.c_str());;
-
+        ON::CloseFile(archive_fp);
         return rc;
     }
 
@@ -81,16 +68,7 @@ public:
 
     inline bool Write3dm(const std::wstring& filePath)
     {
-        
-        bool ok = model.Write(filePath.c_str());    
-    
-        // writes using default/latest version
-        // If you want a specific version (e.g., Rhino 6 = 60, 7 = 70) and your SDK supports it:
-        // bool ok = model.Write(outfile, 60);
-
-        ok ? wprintf(L"Successfully wrote: %s\n", filePath.c_str()) : wprintf(L"Failed to write: %s\n", filePath.c_str());;
-
-        return ok;
+        return model.Write(filePath.c_str());
     }
 
     // ----------------------------------------------------
@@ -123,33 +101,6 @@ public:
         }
 
         return length;
-    }
-
-    inline int sample_curve_unifrom(const ON_Curve* crv, vector<zVector> &pts)
-    {
-        if (!crv)
-        {
-            return 0.0;
-        }
-
-        ON_Interval dom = crv->Domain();
-        double t0 = dom.Min();
-        double t1 = dom.Max();
-
-        const int N = 256;
-        double length = 0.0;
-
-        ON_3dPoint prev = crv->PointAt(t0);
-
-        for (int i = 1; i <= N; i++)
-        {
-            double t = t0 + (t1 - t0) * (double(i) / double(N));
-            ON_3dPoint p = crv->PointAt(t);
-
-            pts.push_back(zVector(p.x, p.y, p.z));
-        }
-
-        return 1;
     }
 
     // ----------------------------------------------------
@@ -221,15 +172,11 @@ public:
                 continue;
             }
 
-            cout << "geom" << endl;
-
             const ON_Curve* crv = ON_Curve::Cast(geom);
             if (!crv)
             {
                 continue;
             }
-
-            cout << "curve geom" << endl;
 
             // Check if planar
             ON_Plane plane;
@@ -237,8 +184,6 @@ public:
             {
                 continue;
             }
-
-            cout << "curve planar " << endl;
 
             // Check if parallel to world XY
             ON_3dVector n = plane.Normal();
@@ -256,48 +201,6 @@ public:
             int zKey = (int)std::round(z * 1000.0);
 
             zGroups[zKey].push_back(crv);
-        }
-    }
-
-    inline void readCurves(
-         std::vector<const ON_Curve*>& curves)
-    {
-        curves.clear();
-
-        const double zTolerance = 1e-3;
-
-        ONX_ModelComponentIterator it(model, ON_ModelComponent::Type::ModelGeometry);
-
-        for (ON_ModelComponentReference ref = it.FirstComponentReference();
-            !ref.IsEmpty();
-            ref = it.NextComponentReference())
-        {
-            const ON_ModelGeometryComponent* geoComp =
-                ON_ModelGeometryComponent::Cast(ref.ModelComponent());
-
-            if (!geoComp)
-            {
-                continue;
-            }
-
-            const ON_Geometry* geom = geoComp->Geometry(nullptr);
-            if (!geom)
-            {
-                continue;
-            }
-
-            cout << "geom" << endl;
-
-            const ON_Curve* crv = ON_Curve::Cast(geom);
-            if (!crv)
-            {
-                continue;
-            }
-
-            cout << "curve geom" << endl;
-            curves.push_back(crv);
-
-            
         }
     }
 
@@ -358,7 +261,6 @@ public:
             {
                 double x = cSrc.x + (p0.x - cDst.x) / scale;
                 double y = cSrc.y + (p0.y - cDst.y) / scale;
-                double z = cSrc.z + (p0.z - cDst.y) / scale;
                 pts.Append(ON_3dPoint(x, y, 0.0));
             }
 
@@ -369,16 +271,6 @@ public:
 
             model.AddModelGeometryComponent(plc, &attr);
         }
-    }
-
-    inline void addPolyCurve(ON_3dPointArray &pts)
-    {
-        ON_PolylineCurve* plcurve = new ON_PolylineCurve(pts);
-
-        ON_3dmObjectAttributes attr;
-        attr.m_name = L"BBox";
-
-        model.AddModelGeometryComponent(plcurve, &attr);
     }
 
 };

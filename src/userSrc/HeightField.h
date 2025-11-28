@@ -111,21 +111,20 @@ public:
         // --- 2) Uniform "contain" scale (never exceeds target on any axis)
         scale = std::min(dst.x / src.x, dst.y / src.y);
 
+       
+
         // --- 3) Centered placement: scale about source center, move to target center
         cSrc = (bmin + bmax) * 0.5f;
         cDst = (targetMin + targetMax) * 0.5f;
 
-        for (auto& s : samples)
-        {
-            s.x = cDst.x + (s.x - cSrc.x) * scale;
-            s.y = cDst.y + (s.y - cSrc.y) * scale;
-            // z remains untouched
-        }
+        for (auto& s : samples)  s = cDst + (s - cSrc) * scale;
 
-        // --- 4) z-range (diagnostic)
+
+
+        // --- 3) z-range (diagnostic)
         zMin = 1e6;;// samples[0].z;
         zMax = -zMin;// samples[0].z;
-        for ( auto& s : samples)
+        for (auto& s : samples)
         {
             zMin = std::min(float(zMin), s.z);
             zMax = std::max(float(zMax), s.z);
@@ -133,6 +132,7 @@ public:
 
         printf("rescaleSamplesToBoundingBox: contain scale=%.6f  src(%.3f,%.3f) -> dst(%.3f,%.3f)  z[%.3f,%.3f]\n",
             scale, src.x, src.y, dst.x, dst.y, zMin, zMax);
+       
     }
 
     // Add this method inside HeightField2D
@@ -856,6 +856,79 @@ public:
     }
 
     //------------------------------------------------------------
+    // CURVE RESAMPLING (Equal Spacing)
+    //------------------------------------------------------------
+
+    /**
+     * Resamples a polyline to have points equally spaced by 'spacing'.
+     * @param inputPoly The original dense curve (e.g., from Marching Squares).
+     * @param spacing   The desired distance between points. Higher value = fewer points.
+     * @return          A new vector containing the resampled points.
+     */
+    std::vector<zVector> resamplePolyline( std::vector<zVector>& inputPoly, float spacing)
+    {
+        if (inputPoly.size() < 2 || spacing <= 1e-5f)
+        {
+            return inputPoly;
+        }
+
+        std::vector<zVector> outPoly;
+
+        // Always keep the starting point
+        outPoly.push_back(inputPoly[0]);
+
+        float currentDist = 0.0f;       // Distance traversed on the current walk
+        float nextTargetDist = spacing; // The next distance threshold to place a point
+
+        // Iterate over original segments
+        for (size_t i = 0; i < inputPoly.size() - 1; i++)
+        {
+            zVector p0 = inputPoly[i];
+            zVector p1 = inputPoly[i + 1];
+
+            float segmentLength = p0.distanceTo(p1);
+
+            // If duplicate points exist in input, skip them to avoid div/0
+            if (segmentLength < 1e-6f) continue;
+
+            // Check if the target distance falls within this segment (potentially multiple times)
+            while (currentDist + segmentLength >= nextTargetDist)
+            {
+                float distNeeded = nextTargetDist - currentDist;
+                float t = distNeeded / segmentLength;
+
+                // Linear Interpolation: P = p0 + (p1 - p0) * t
+                zVector newPt = p0 + (p1 - p0) * t;
+
+                outPoly.push_back(newPt);
+
+                // Advance the target
+                nextTargetDist += spacing;
+            }
+
+            // Add this segment's full length to the accumulator before moving to next segment
+            currentDist += segmentLength;
+        }
+
+        // Ensure the exact end point of the original curve is included
+        // (unless the last resampled point is practically identical to it)
+        if (!outPoly.empty())
+        {
+            if (outPoly.back().distanceTo(inputPoly.back()) > 1e-4f)
+            {
+                outPoly.push_back(inputPoly.back());
+            }
+        }
+        else
+        {
+            // Fallback for degenerate cases
+            outPoly.push_back(inputPoly.back());
+        }
+
+        return outPoly;
+    }
+
+    //------------------------------------------------------------
     // DRAW PATH
     //------------------------------------------------------------
  
@@ -874,112 +947,187 @@ public:
     //------------------------------------------------------------
     // VECTOR FIELD FROM HEIGHT FIELD
     //------------------------------------------------------------
+    //------------------------------------------------------------
+    // BILINEAR GRADIENT LOOKUP
+    //------------------------------------------------------------
+    zVector getGradientBilinear(float worldX, float worldY)
+    {
+        // 1. Map World Space -> Grid Space (Float)
+        // Matches your [-50, 50] world bounds
+        float u = (worldX + 50.0f) / 100.0f;
+        float v = (worldY + 50.0f) / 100.0f;
 
+        // Clamp to safe range [0, 1]
+        u = std::clamp(u, 0.0f, 1.0f);
+        v = std::clamp(v, 0.0f, 1.0f);
+
+        float gx = u * (SF_RES - 1);
+        float gy = v * (SF_RES - 1);
+
+        // 2. Determine Integer Indices and Fractional Weights
+        int x0 = (int)floor(gx);
+        int y0 = (int)floor(gy);
+
+        // Ensure we don't access out of bounds (x0+1)
+        int x1 = std::min(x0 + 1, SF_RES - 1);
+        int y1 = std::min(y0 + 1, SF_RES - 1);
+
+        float tx = gx - float(x0); // Fractional part X
+        float ty = gy - float(y0); // Fractional part Y
+
+        // 3. Fetch Neighbors
+        zVector v00 = gradient[x0][y0];
+        zVector v10 = gradient[x1][y0];
+        zVector v01 = gradient[x0][y1];
+        zVector v11 = gradient[x1][y1];
+
+        // 4. Bilinear Interpolation
+        // Lerp X (Bottom Row)
+        zVector bot = v00 * (1.0f - tx) + v10 * tx;
+        // Lerp X (Top Row)
+        zVector top = v01 * (1.0f - tx) + v11 * tx;
+
+        // Lerp Y (Combine Bottom and Top)
+        return bot * (1.0f - ty) + top * ty;
+    }
 
     //------------------------------------------------------------
     // STREAMLINES (OPTIONAL, MATCHING LVM STRUCTURE)
     //------------------------------------------------------------
     void drawStreamlinesFromSeeds
     (
-        const vector<zVector>& seeds,
+        const std::vector<zVector>& seeds,
         int numDirections = 1,
-        float stepSize = 0.5f,
-        int maxSteps = 400
+        float stepSize = 1.0f,
+        int maxSteps = 600
     )
     {
-        vector<vector<zVector>> streamlines;
+        std::vector<std::vector<zVector>> streamlines;
 
-        // ------------------------------------------------------------
-        // For each seed point (in WORLD space)
-        // ------------------------------------------------------------
-        for (auto& seedWS : seeds)
+        // Thresholds for stopping
+        float sinkThreshold = 1e-5f; // Gradient length considered "zero"
+        float minMoveDist = stepSize * 0.05f; // Stop if we move less than 5% of stepSize
+
+        for (const auto& seedWS : seeds)
         {
-            // --------------------------------------------------------
-            // 16 radial directions (or user-defined)
-            // --------------------------------------------------------
             for (int d = 0; d < numDirections; d++)
             {
+                // Calculate Initial Direction (only used if starting exactly on a flat spot)
                 float angle = float(d) / float(numDirections) * TWO_PI;
                 zVector initialDir(cos(angle), sin(angle), 0);
 
-                // Start RK2 integration
                 zVector pWS = seedWS;
-                vector<zVector> path;
+                std::vector<zVector> path;
                 path.push_back(pWS);
 
-                // ----------------------------------------------------
-                // RK2 Streamline Integration
-                // ----------------------------------------------------
+                // Track previous velocity to detect 180 reversals (ping-ponging)
+                zVector prevVelocity = zVector(0, 0, 0);
+
                 for (int s = 0; s < maxSteps; s++)
                 {
-                    // ==================================================
-                    // Step 1: Sample vector at pWS
-                    // ==================================================
+                    // --------------------------------------------------
+                    // Step 1: Sample vector at current position (Predictor)
+                    // --------------------------------------------------
                     int ix = worldToGrid(pWS.x);
                     int iy = worldToGrid(pWS.y);
 
-                    // Grid vector
-                    zVector v1 = gradient[ix][iy];
+                    // Safety: Stop if we left the grid
+                    if (ix < 0 || ix >= SF_RES || iy < 0 || iy >= SF_RES) break;
 
-                    if (v1.length() < 1e-6f)
+                    zVector g1 = getGradientBilinear(pWS.x, pWS.y);
+                    //zVector g1 = gradient[ix][iy];
+
+                    // STOP CONDITION 1: Gradient is zero (Sink/Peak reached)
+                    if (g1.length() < sinkThreshold)
                     {
-                        // fallback to radial
-                        v1 = initialDir;
+                        // If this is the very first step, use radial dir, otherwise stop
+                        if (s == 0) g1 = initialDir;
+                        else break;
                     }
 
+                    zVector v1 = g1;
                     v1.normalize();
                     v1 *= stepSize;
 
-                    // ==================================================
-                    // Step 2: Midpoint (RK2 predictor)
-                    // ==================================================
+                    // --------------------------------------------------
+                    // Step 2: Midpoint Sample (Corrector)
+                    // --------------------------------------------------
                     zVector midWS = pWS + v1 * 0.5f;
-
                     int mx = worldToGrid(midWS.x);
                     int my = worldToGrid(midWS.y);
 
-                    zVector v2 = gradient[mx][my];
-                    if (v2.length() < 1e-6f)
-                        v2 = initialDir;
+                    // Safety: Midpoint out of bounds
+                    if (mx < 0 || mx >= SF_RES || my < 0 || my >= SF_RES) break;
 
+                    //zVector g2 = gradient[mx][my];
+                    zVector g2 = getGradientBilinear(midWS.x, midWS.y);
+
+                    // STOP CONDITION 1 (Repeated for midpoint)
+                    if (g2.length() < sinkThreshold) break;
+
+                    zVector v2 = g2;
                     v2.normalize();
                     v2 *= stepSize;
 
-                    // ==================================================
-                    // Step 3: Corrector
-                    // ==================================================
-                    pWS = pWS + v2;
+                    // --------------------------------------------------
+                    // STOP CONDITION 2: Direction Reversal (Oscillation)
+                    // --------------------------------------------------
+                    // If the new velocity opposes the previous velocity, we overshot the sink.
+                    if (s > 0 && v2*(prevVelocity) < 0.0f)
+                    {
+                        break;
+                    }
 
-                    // Stop if outside world range [-50, 50]
-                    if (pWS.x < -50 || pWS.x > 50 || pWS.y < -50 || pWS.y > 50)
+                    // --------------------------------------------------
+                    // Update Position
+                    // --------------------------------------------------
+                    zVector nextWS = pWS + v2;
+
+                    // STOP CONDITION 3: Stagnation
+                    // If we barely moved (e.g. hitting a wall or very slow convergence)
+                    if (nextWS.distanceTo(pWS) < minMoveDist) break;
+
+                    // STOP CONDITION 4: World Bounds
+                    if (nextWS.x < -50 || nextWS.x > 50 || nextWS.y < -50 || nextWS.y > 50)
                         break;
 
-                    path.push_back(pWS);
+                    path.push_back(nextWS);
+
+                    pWS = nextWS;
+                    prevVelocity = v2;
                 }
 
-                streamlines.push_back(path);
+                if (path.size() > 1)
+                {
+                    streamlines.push_back(path);
+                }
             }
         }
 
         // ------------------------------------------------------------
         // Draw
         // ------------------------------------------------------------
-        glColor3f(0, 1, 0);
         glLineWidth(3);
+        glColor3f(1, 0, 0); // Red color for streamlines
 
         for (auto& stream : streamlines)
         {
-            // Optional smoothing
-            for (int i = 0; i < 3; i++)
-                smoothPath(stream);
-
-            for (size_t i = 0; i + 1 < stream.size(); i++)
+            // Resample to smooth out the RK2 segments
+            // Using your existing resamplePolyline method
+            if (stream.size() > 2)
             {
-                drawLine(zVecToAliceVec(stream[i]),
-                    zVecToAliceVec(stream[i + 1]));
+                stream = resamplePolyline(stream, stepSize * 0.5f);
+
+                // Optional smoothing pass
+                smoothPath(stream);
+                smoothPath(stream);
+            }
+
+            for (size_t i = 0; i < stream.size() - 1; i++)
+            {
+                drawLine(zVecToAliceVec(stream[i]), zVecToAliceVec(stream[i + 1]));
             }
         }
-
         glLineWidth(1);
     }
 
@@ -1026,12 +1174,18 @@ public:
     {
         if (!lastShortestPath.empty())
         {
-            glColor3f(0, 0, 1);
+            
             for (size_t i = 0; i < lastShortestPath.size() - 1; i++)
             {
                 drawLine(zVecToAliceVec(lastShortestPath[i]), zVecToAliceVec(lastShortestPath[i + 1]));
+                
+                glPointSize(5);
+                drawPoint( zVecToAliceVec(lastShortestPath[i]));
+
             }
         }
+
+        glPointSize(1);
 
     }
 

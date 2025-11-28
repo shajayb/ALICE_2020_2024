@@ -13,7 +13,7 @@
 #include <map>
 
 // - ----------- ZSPACE -----------
-
+#include "RhinoIO.h"
 #include <headers/zApp/include/zObjects.h>
 #include <headers/zApp/include/zFnSets.h>
 #include <headers/zApp/include/zViewer.h>
@@ -84,17 +84,18 @@ bool loadPolygonFromFile(std::string& filePath, std::vector<zVector>& polygon)
 
 // - ----------- OPEN NURBS  -----------
 
-
-// defining OPENNURBS_PUBLIC_INSTALL_DIR enables automatic linking using pragmas
-#define OPENNURBS_PUBLIC_INSTALL_DIR "C:/Users/shajay.b/source/repos/opennurbs"
-// uncomment the next line if you want to use opennurbs as a DLL
-#define OPENNURBS_IMPORTS
-#include "C:/Users/shajay.b/source/repos/opennurbs/opennurbs_public.h"
+//
+//// defining OPENNURBS_PUBLIC_INSTALL_DIR enables automatic linking using pragmas
+//#define OPENNURBS_PUBLIC_INSTALL_DIR "C:/Users/shajay.b/source/repos/opennurbs"
+//// uncomment the next line if you want to use opennurbs as a DLL
+//#define OPENNURBS_IMPORTS
+//#include "C:/Users/shajay.b/source/repos/opennurbs/opennurbs_public.h"
 
 
 
 
 // - ----------- OTHER CUSTOM FUNCTIONS  -----------
+
 
 #include "scalarField.h"
 #include "HeightField.h"
@@ -102,42 +103,31 @@ bool loadPolygonFromFile(std::string& filePath, std::vector<zVector>& polygon)
 #include "parcel_vector.h"
 
 
+
+
 void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
 {
-    // Init OpenNURBS
-    ON::Begin();
+    RhinoIO rio;
 
-    // Model + attributes
-    ONX_Model model;
-    model.m_properties.m_Notes.m_notes = L"Simple polyline via OpenNURBS";
-    model.m_properties.m_Notes.m_bVisible = true;
-
+    // --------- add parcel polygons to RIO
+    vector< vector<zVector> > all_polygons;
+    vector<zVector> poly;
+ 
     for (auto plot : plots)
     {
+        poly.clear();
+        for (int i = 0; i < plot.nPoints; i++)poly.push_back( plot.polyPoints[i]);
 
-        ON_3dPointArray pts;
-        for (int i = 0; i < plot.nPoints; i++)
-        {
-            zVector pt = plot.polyPoints[i];
+        all_polygons.push_back(poly);
 
-            // reverse mapping: from destination back to source
-            pt.x = cSrc.x + (pt.x - cDst.x) / scale * 1000;
-            pt.y = cSrc.y + (pt.y - cDst.y) / scale * 1000;
-            pt.z = 0;
-
-            pts.Append(ON_3dPoint(pt.x, pt.y, pt.z));
-
-        }
-
-        ON_PolylineCurve* plc = new ON_PolylineCurve(pts);
-
-        ON_3dmObjectAttributes attr;
-        attr.m_name = L"SimplePolyline";
-
-        model.AddModelGeometryComponent(plc, &attr);
     }
 
-    // bounding box
+    rio.addCurves(all_polygons, scale, ON_3dPoint(cDst.x, cDst.y, cDst.z), ON_3dPoint(cSrc.x, cSrc.y, cSrc.z));
+    
+
+   
+
+    // --------- add BBOX polygons to RIO
 
     {
         ON_3dPointArray pts;
@@ -152,31 +142,19 @@ void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
 
         for (int i = 0; i < 5; i++)
         {
-            zVector pt = (z_pts[i] / scale) * 1000;
+            zVector pt = (z_pts[i] / scale);
             pts.Append(ON_3dPoint(pt.x, pt.y, pt.z));
         }
 
-        ON_PolylineCurve* plc = new ON_PolylineCurve(pts);
-
-        ON_3dmObjectAttributes attr;
-        attr.m_name = L"BBox";
-
-        model.AddModelGeometryComponent(plc, &attr);
+        rio.addPolyCurve(pts);
+        
     }
 
 
 
-    // --------------- write file via filename overload ---
-    wchar_t* outfile = L"data/simplest_polyline.3dm";
-    bool ok = model.Write(outfile);             // writes using default/latest version
-    // If you want a specific version (e.g., Rhino 6 = 60, 7 = 70) and your SDK supports it:
-    // bool ok = model.Write(outfile, 60);
-
-
-    ok ? printf("Wrote 3dm: simplest_polyline.3dm\n") : printf("Failed to write 3dm file.\n");
-
-    ON::End();
-
+    // --------------- write file  ---
+   
+    rio.Write3dm(L"data/plots.3dm");
 }
 
 void drawText(string& str, float x = 50, float y = 100)
@@ -265,17 +243,45 @@ void trainSGD(heightfieldNN& nn, vector<float>& dummyInput, vector<float>& dummy
 // ------------------------------------------------------------
 // shortest path helper 
 // -
-void drawShortestPaths(vector< vector<zVector> >& allPaths)
+
+void shortest_paths_N_x_M
+( 
+    vector<zVector> &Source, vector<zVector>& Sinks, HeightField2D &sf_field,
+    vector< vector<zVector> > &paths, vector<zVector>&clippingPolygon 
+)
+{
+    paths.clear();
+    for (int n = 0; n < Source.size(); n++)
+    {
+        for (int m = 0; m < Sinks.size(); m++)
+        {
+            //if (m == n)continue;
+            zVector str = Source[n]; 
+            zVector end = Sinks[m];
+
+            if(clippingPolygon.size() > 3)
+            {
+                if (!pointInsidePolygon(str, clippingPolygon))continue;
+                if (!pointInsidePolygon(end, clippingPolygon))continue;
+            }
+
+            sf_field.findShortestPath(str, end);
+
+
+            for (int i = 0; i < 5; i++)
+                sf_field.smoothPath();
+
+            paths.push_back(sf_field.lastShortestPath);
+        }
+    }
+}
+
+void draw_paths(vector< vector<zVector> >& allPaths)
 {
     for (auto& path : allPaths)
         if (!path.empty())
-        {
-            glColor3f(0, 0, 1);
             for (size_t i = 0; i < path.size() - 1; i++)
-            {
                 drawLine(zVecToAliceVec(path[i]), zVecToAliceVec(path[i + 1]));
-            }
-        }
 
 }
 // ------------------------- APP ----------------------------------
@@ -283,7 +289,7 @@ void drawShortestPaths(vector< vector<zVector> >& allPaths)
 // ------------------------- - ----------------------------------
 
 // -- height field
-HeightField2D importedHeightField, siteHeightField;
+HeightField2D importedHeightField, importedHeightField_original, siteHeightField;
 double threshold;
 
 // site definition
@@ -310,6 +316,7 @@ spaceGrid SG;
 //--- paths
 
 vector< vector<zVector> > shortestPaths;
+vector< vector <zVector> > existing_paths;
 
 // -- app
 
@@ -339,6 +346,10 @@ void setup()
     importedHeightField.readSamplesAndInterpolate(string("data/cabins_site.txt"));
     zRangeMin = importedHeightField.zMin;
 
+    importedHeightField_original.clearField();
+    for (int i = 0; i < SF_RES; i++)
+        for (int j = 0; j < SF_RES; j++)importedHeightField_original.field[i][j] = importedHeightField.field[i][j];
+   
     // ----------- terrain trim
 
     polygon.clear();
@@ -375,7 +386,7 @@ void setup()
 
 void update(int value)
 {
-    if (compute) keyPress('l', 0, 0);
+    if (compute) keyPress('t', 0, 0);
 }
 
 void draw()
@@ -386,10 +397,10 @@ void draw()
 
     // ----------------------- imported heightfield and sample points 
 
+    importedHeightField.drawSamplePoints();
+    //  myHeightField.drawFieldPoints(true, false);
+     // 
 
-     importedHeightField.drawSamplePoints();
-   //  myHeightField.drawFieldPoints(true, false);
-    // 
 
     // ----------------------- parcels
 
@@ -404,7 +415,8 @@ void draw()
        // myHeightField1.drawPath();
        // myHeightField1.drawFieldPoints(false, false);
     glLineWidth(5);
-    drawShortestPaths(shortestPaths);
+    glColor3f(0.25, 0, 0);
+    draw_paths(shortestPaths);
 
     // ----------------------- nn
 
@@ -415,9 +427,9 @@ void draw()
     std::vector<Pose2D> poses;
     nn.extractPoses(output, poses, true);
     //
-    /*vector<zVector> centers;
-    for( auto &pose : poses)centers.push_back(pose.c);
-    myHeightField1.drawStreamlinesFromSeeds(centers);*/
+        /*vector<zVector> centers;
+        for( auto &pose : poses)centers.push_back(pose.c);
+        myHeightField1.drawStreamlinesFromSeeds(centers);*/
     //
 
     glPointSize(5);
@@ -442,6 +454,24 @@ void draw()
 
     restore3d();
 
+    
+    //
+    glColor3f(0, 0, 1);
+    importedHeightField_original.drawPath();
+   // importedHeightField_original.computeGradient();
+    //importedHeightField_original.drawStreamlinesFromSeeds(importedHeightField_original.lastShortestPath);
+
+    siteHeightField.drawFieldPoints();
+    siteHeightField.drawIsocontours(threshold);
+
+    //
+
+
+
+    draw_paths(existing_paths);
+
+    //------------------
+
 
 }
 
@@ -451,9 +481,143 @@ int n = 0;
 
 void keyPress(unsigned char k, int xm, int ym)
 {
-
-    if (k == 'g') // ----------paths
+    
+    if (k == '2')
     {
+        RhinoIO in_RIO;
+        in_RIO.Read3dm(L"data/beta_village_paths.3dm");
+
+
+        vector<const ON_Curve* > curves_in_file;
+
+        in_RIO.readCurves(curves_in_file);
+
+       for (auto& crv : curves_in_file)cout << in_RIO.ComputeCurveLength(crv) << endl;
+
+        
+       existing_paths.clear();
+        vector <zVector> poly;
+
+        for (auto& crv : curves_in_file)
+        {
+            poly.clear();
+            in_RIO.sample_curve_unifrom(crv, poly);
+            existing_paths.push_back(poly);
+        }
+       
+        for (auto& path : existing_paths)
+        {
+            for (auto& p : path)
+            {
+                p.x *= importedHeightField.scale;
+                p.y *= importedHeightField.scale;
+                
+
+                float zScl = ofMap(p.z, importedHeightField.zMin, importedHeightField.zMax, importedHeightField.MLS_zMin, importedHeightField.MLS_zMax);
+                p.z = zScl;
+            }
+        }
+    }
+    
+    
+    if (k == 'j')
+    {
+        siteHeightField.clearField();
+
+        vector<zVector> plot_centers;
+        for (auto& parcel : plots)
+            if (pointInsidePolygon(parcel.centerOfBox, nn.polygon)) plot_centers.push_back(parcel.centerOfBox);
+
+        siteHeightField.addVoronoi(plot_centers);
+        siteHeightField.trimFieldWithPolygon(nn.polygon);
+
+       // siteHeightField.rescaleFieldToRange();
+    }
+
+    if (k == 'h')
+    {
+        // ----------------- high line contour extraction
+        
+        // contour segments and ordered set
+        zRangeMin += 1.0;
+        if (zRangeMin >= importedHeightField.zMax)zRangeMin = importedHeightField.zMin;
+
+        float iso = ofMap( zRangeMin, importedHeightField.MLS_zMin, importedHeightField.MLS_zMax, 0, 1);
+        importedHeightField_original.computeIsocontours(iso);
+        std::vector<std::vector<zVector>> contours = importedHeightField_original.getOrderedContours();
+
+        // extract largest contiguous set
+        vector<zVector> poly;
+        size_t maxPts = 0;
+
+        for (int i = 0; i < contours.size(); i++)
+        {
+
+            if (contours[i].size() > maxPts)
+            {
+                maxPts = contours[i].size();
+                poly = contours[i];
+            }
+        }
+
+        cout << maxPts << " -- " << poly.size() << endl;
+
+        // resample contour, trim with polygon
+        
+        float scale = importedHeightField.scale;
+
+        poly = importedHeightField.resamplePolyline(poly, 2.5 * (1.0f / scale));
+        for (int n = 0; n < 5; n++)importedHeightField_original.smoothPath(poly);
+
+        importedHeightField_original.lastShortestPath.clear();
+        for (auto& p : poly)if (pointInsidePolygon(p, nn.polygon)) importedHeightField_original.lastShortestPath.push_back(p);
+
+        poly = importedHeightField_original.lastShortestPath;
+
+       // ---------------------------- shortest paths to parcel from contour high line ;
+       // cost field
+        siteHeightField.clearField();
+        for (int i = 0; i < SF_RES; i++)
+            for (int j = 0; j < SF_RES; j++)
+                siteHeightField.field[i][j] = importedHeightField_original.field[i][j];
+        
+        siteHeightField.trimFieldWithPolygon(nn.polygon);
+
+        // cost field scaling
+
+        vector<vector<zVector>> polys;
+        for (auto& parcel : plots)
+            if (pointInsidePolygon(parcel.centerOfBox, nn.polygon)) polys.push_back(parcel.polyPoints);
+        siteHeightField.scale_scalar_within_polygons(polys);
+
+
+        // -- path storage
+        shortestPaths.clear();
+
+        // -- node sets N (poly) & M (poses);
+
+        
+        std::vector<Pose2D> poses;
+        nn.extractPoses(output, poses, true);
+        
+        // -- paths from M nodes to N nodes
+        // poly x poses[i].c
+
+        vector<zVector> sources, sinks;
+        //for (int n = 0; n < poly.size(); n++)sources.push_back(poly[n]);
+        sources.push_back(poly[0]);
+        sources.push_back( poly[poly.size() - 1] ); 
+
+        for (int m = 0; m < poses.size(); m++)sinks.push_back(poses[m].c);
+
+        shortest_paths_N_x_M(sources, sinks, siteHeightField, shortestPaths, nn.polygon);
+
+
+    }
+
+    if (k == 'g') // ----------paths : N nodes to N nodes (poses)
+    {
+        // cost field
         siteHeightField.clearField();
         for (int i = 0; i < SF_RES; i++)
             for (int j = 0; j < SF_RES; j++)
@@ -461,41 +625,28 @@ void keyPress(unsigned char k, int xm, int ym)
 
         siteHeightField.trimFieldWithPolygon(nn.polygon);
 
-        std::vector<Pose2D> poses;
-        nn.extractPoses(output, poses, true);
+        // cost field scaling
 
-
-        //--
-
-        vector<vector<zVector>> polys;
+        vector< vector<zVector> > polys;
         for (auto& parcel : plots)
             if (pointInsidePolygon(parcel.centerOfBox, nn.polygon)) polys.push_back(parcel.polyPoints);
         siteHeightField.scale_scalar_within_polygons(polys);
 
-        //
+        // node set
+        std::vector<Pose2D> poses;
+        nn.extractPoses(output, poses, true);
+
+
+        // paths N x N 
         shortestPaths.clear();
-        for (int n = 0; n < poses.size(); n++)
-        {
-            for (int m = 0; m < poses.size(); m++)
-            {
-                if (m == n)continue;
-                zVector str = poses[m].c;// poses[0].c;// nn.sdfSamplePoints[0].pt;
-                zVector end = poses[n].c;//nn.sdfSamplePoints[n++].pt;
 
-                if (!pointInsidePolygon(str, nn.polygon))continue;
-                if (!pointInsidePolygon(end, nn.polygon))continue;
+        vector<zVector> sources, sinks;
+        for (int n = 0; n < 1/*poses.size()*/; n++)sources.push_back(poses[n].c);
+        for (int m = 0; m < poses.size(); m++)sinks.push_back(poses[m].c);
 
-                siteHeightField.findShortestPath(str, end);
+        shortest_paths_N_x_M(sources, sinks, siteHeightField, shortestPaths, nn.polygon);
 
-
-                for (int i = 0; i < 5; i++)
-                {
-                    siteHeightField.smoothPath();
-                }
-
-                shortestPaths.push_back(siteHeightField.lastShortestPath);
-            }
-        }
+        
     }
 
     // --------------- WRITE 3DM ---------------
@@ -574,6 +725,8 @@ void keyPress(unsigned char k, int xm, int ym)
             }
 
         for (auto p : nn.polygon)SG.addPosition(p);
+
+        for (auto p : importedHeightField_original.lastShortestPath)SG.addPosition(p);
 
         // re-partition
         SG.PartitionParticlesToBuckets();
