@@ -412,8 +412,8 @@ public:
     //   minNeighbors       : require this many points inside support
     //   eps                : tiny to avoid singularities
 //
-    void interpolateToGrid_MLS(double supportRadiusCells = 3.0,
-        int    minNeighbors = 6,
+    void interpolateToGrid_MLS(double supportRadiusCells = 1.0,
+        int    minNeighbors = 10,
         double eps = 1e-12)
     {
          int nx = SF_RES;
@@ -816,7 +816,35 @@ public:
         printf("No path found. Path length = %i\n", lastShortestPath.size());
     }
 
+    void clippedContour( float threshold, vector<zVector> &poly, vector<zVector>& clippingPoly)
+    {
+        computeIsocontours(threshold);
+        std::vector<std::vector<zVector>> contours = getOrderedContours();
 
+        // extract largest contiguous set
+        size_t maxPts = 0;
+
+        for (int i = 0; i < contours.size(); i++)
+        {
+
+            if (contours[i].size() > maxPts)
+            {
+                maxPts = contours[i].size();
+                poly = contours[i];
+            }
+        }
+
+
+        // resample contour, trim with polygon
+
+        poly = resamplePolyline(poly, 2.5 * (1.0f / scale));
+        for (int n = 0; n < 5; n++)smoothPath(poly);
+
+        lastShortestPath.clear();
+        for (auto& p : poly)if (pointInsidePolygon(p, clippingPoly)) lastShortestPath.push_back(p);
+
+        poly = lastShortestPath;
+    }
 
     //------------------------------------------------------------
     // SMOOTHING

@@ -82,15 +82,15 @@ bool loadPolygonFromFile(std::string& filePath, std::vector<zVector>& polygon)
     return !polygon.empty();
 }
 
-// - ----------- OPEN NURBS  -----------
+void drawText(string& str, float x = 50, float y = 100)
+{
+    unsigned int i;
+    glRasterPos2f(x, y);
 
-//
-//// defining OPENNURBS_PUBLIC_INSTALL_DIR enables automatic linking using pragmas
-//#define OPENNURBS_PUBLIC_INSTALL_DIR "C:/Users/shajay.b/source/repos/opennurbs"
-//// uncomment the next line if you want to use opennurbs as a DLL
-//#define OPENNURBS_IMPORTS
-//#include "C:/Users/shajay.b/source/repos/opennurbs/opennurbs_public.h"
 
+    for (i = 0; i < str.length(); i++)
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_10, str[i]);
+}
 
 
 
@@ -103,8 +103,6 @@ bool loadPolygonFromFile(std::string& filePath, std::vector<zVector>& polygon)
 #include "parcel_vector.h"
 
 
-
-
 void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
 {
     RhinoIO rio;
@@ -112,20 +110,20 @@ void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
     // --------- add parcel polygons to RIO
     vector< vector<zVector> > all_polygons;
     vector<zVector> poly;
- 
+
     for (auto plot : plots)
     {
         poly.clear();
-        for (int i = 0; i < plot.nPoints; i++)poly.push_back( plot.polyPoints[i]);
+        for (int i = 0; i < plot.nPoints; i++)poly.push_back(plot.polyPoints[i]);
 
         all_polygons.push_back(poly);
 
     }
 
     rio.addCurves(all_polygons, scale, ON_3dPoint(cDst.x, cDst.y, cDst.z), ON_3dPoint(cSrc.x, cSrc.y, cSrc.z));
-    
 
-   
+
+
 
     // --------- add BBOX polygons to RIO
 
@@ -147,25 +145,17 @@ void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
         }
 
         rio.addPolyCurve(pts);
-        
+
     }
 
 
 
     // --------------- write file  ---
-   
+
     rio.Write3dm(L"data/plots.3dm");
 }
 
-void drawText(string& str, float x = 50, float y = 100)
-{
-    unsigned int i;
-    glRasterPos2f(x, y);
 
-
-    for (i = 0; i < str.length(); i++)
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_10, str[i]);
-}
 
 
 // ------------------------------------------------------------
@@ -276,14 +266,31 @@ void shortest_paths_N_x_M
     }
 }
 
+
+void draw_path(vector<zVector> &path)
+{
+    if (path.size() < 1) return; 
+    for (size_t i = 0; i < path.size() - 1; i++)
+        drawLine(zVecToAliceVec(path[i]), zVecToAliceVec(path[i + 1]));
+
+    // --- -- 
+    glPointSize(3);
+
+    for (size_t i = 0; i < path.size(); i++)
+        drawPoint( zVecToAliceVec(path[i]) );
+
+    glPointSize(3);
+}
 void draw_paths(vector< vector<zVector> >& allPaths)
 {
     for (auto& path : allPaths)
         if (!path.empty())
-            for (size_t i = 0; i < path.size() - 1; i++)
-                drawLine(zVecToAliceVec(path[i]), zVecToAliceVec(path[i + 1]));
+            draw_path(path);
+            
 
 }
+
+
 // ------------------------- APP ----------------------------------
 // ------------------------- - ----------------------------------
 // ------------------------- - ----------------------------------
@@ -317,6 +324,7 @@ spaceGrid SG;
 
 vector< vector<zVector> > shortestPaths;
 vector< vector <zVector> > existing_paths;
+vector <zVector> clippedContour;
 
 // -- app
 
@@ -337,36 +345,16 @@ void setup()
     S.sliders[0].minVal = -1; // myHeightField.zScale * -1;
     S.sliders[0].maxVal = 1; //  myHeightField.zScale;
 
-    // ----------- terrrain 
+    // ----------- TERRAIN  -----------
 
     importedHeightField = *new HeightField2D();
     siteHeightField = *new HeightField2D();
 
-    importedHeightField.clearField();
-    importedHeightField.readSamplesAndInterpolate(string("data/cabins_site.txt"));
-    zRangeMin = importedHeightField.zMin;
 
-    importedHeightField_original.clearField();
-    for (int i = 0; i < SF_RES; i++)
-        for (int j = 0; j < SF_RES; j++)importedHeightField_original.field[i][j] = importedHeightField.field[i][j];
-   
-    // ----------- terrain trim
-
-    polygon.clear();
-    loadPolygonFromFile(string("data/terrain_boundary_poly.txt"), polygon);
-    importedHeightField.rescalePoints(polygon);// scale polygon by same amount as height feild points.
-    importedHeightField.trimFieldWithPolygon(polygon);
-
-    importedHeightField.computeGradient();
 
     // ----------- NN ----------------
 
     nn = heightfieldNN(30); // or however many poses you want
-
-    //  ----- SDF loss polygon
-
-    nn.setTargetPolygon(polygon);
-    //nn.generateSDFSamplePointsFromPolygon();
 
     // ----- reserve input and output dimensions
     
@@ -374,19 +362,19 @@ void setup()
     output = nn.forward(dummyInput);
 
 
-    // ----------- parcels
+    // ----------- PARCELS -----------
 
     plots.clear();
     int id = 0;
 
-    //
+    // ----- spatial bins
 
     SG = *new spaceGrid();
 }
 
 void update(int value)
 {
-    if (compute) keyPress('t', 0, 0);
+    if (compute) keyPress('l', 0, 0);
 }
 
 void draw()
@@ -398,9 +386,7 @@ void draw()
     // ----------------------- imported heightfield and sample points 
 
     importedHeightField.drawSamplePoints();
-    //  myHeightField.drawFieldPoints(true, false);
-     // 
-
+   // importedHeightField.drawFieldPoints(true, false);
 
     // ----------------------- parcels
 
@@ -412,65 +398,33 @@ void draw()
     wireFrameOff();
 
     // ----------------------- paths
-       // myHeightField1.drawPath();
-       // myHeightField1.drawFieldPoints(false, false);
-    glLineWidth(5);
+
     glColor3f(0.25, 0, 0);
     draw_paths(shortestPaths);
+    draw_paths(existing_paths);
 
     // ----------------------- nn
 
     nn.visualize(zVector(50, 350, 0), 200, 250);
-    nn.drawPolygon();
-
-
-    std::vector<Pose2D> poses;
-    nn.extractPoses(output, poses, true);
-    //
-        /*vector<zVector> centers;
-        for( auto &pose : poses)centers.push_back(pose.c);
-        myHeightField1.drawStreamlinesFromSeeds(centers);*/
-    //
-
-    glPointSize(5);
-    glColor3f(0, 0, 0);
-    for (auto& pose : poses)
-    {
-        drawPoint(zVecToAliceVec(pose.c));
-        // drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + pose.v * 5.0));
-        zVector dir = importedHeightField.gradientAt(pose.c);
-        dir.normalize();
-        drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + dir * 2.0));
-
-        drawCircle(zVecToAliceVec(pose.c), radius, 32);
-    }
-    glPointSize(1);
-
-    setup2d();
-
-        char s[200];
-        sprintf(s, "%.4f", prevLoss);
-        drawText(string(s), 50, 450);
-
-    restore3d();
-
+    nn.drawCoveragePolygon();
+    nn.draw_output_and_loss();
     
+
     //
     glColor3f(0, 0, 1);
-    importedHeightField_original.drawPath();
+    
+    importedHeightField_original.clippedContour(threshold, clippedContour, nn.polygon);
+    draw_path(clippedContour);
+    
    // importedHeightField_original.computeGradient();
     //importedHeightField_original.drawStreamlinesFromSeeds(importedHeightField_original.lastShortestPath);
 
-    siteHeightField.drawFieldPoints();
-    siteHeightField.drawIsocontours(threshold);
+    if( plots.size() > 0)
+    {
+        siteHeightField.drawFieldPoints();
+        //siteHeightField.drawIsocontours(threshold);
+    }
 
-    //
-
-
-
-    draw_paths(existing_paths);
-
-    //------------------
 
 
 }
@@ -485,38 +439,85 @@ void keyPress(unsigned char k, int xm, int ym)
     if (k == '2')
     {
         RhinoIO in_RIO;
-        in_RIO.Read3dm(L"data/beta_village_paths.3dm");
+        in_RIO.Read3dm(L"data/CF_beta_village_extract.3dm");//beta_village_paths.3dm
+        auto names = in_RIO.GetObjectInfo();
+
+        vector< RhinoObjectInfo> curves, meshes, pclouds;
+        in_RIO.SeparateGeometryTypes(names,curves, meshes, pclouds);
+
+        // ---------- import point cloud .. if more than one PC exists, all are processesd, but only last one is stored 
+
+        for (const auto& obj : pclouds)
+        {
 
 
-        vector<const ON_Curve* > curves_in_file;
+            // Try POINT CLOUD
+            const ON_PointCloud* PC = ON_PointCloud::Cast(obj.geometry);
+            if ( PC /*&& obj.name == L"PC"*/ )
+            {
+                int count = PC->m_P.Count();
+                importedHeightField.samples.clear();
 
-        in_RIO.readCurves(curves_in_file);
+                for (int i = 0; i < count; i++)
+                {
+                    const ON_3dPoint& p = PC->m_P[i];
+                    importedHeightField.samples.emplace_back(zVector(p.x, p.y, p.z));
+                 
+                }
 
-       for (auto& crv : curves_in_file)cout << in_RIO.ComputeCurveLength(crv) << endl;
+                
+                importedHeightField.rescaleSamplesToBoundingBox(zVector(-50, -50, -50), zVector(50, 50, 50));
+                // samples to scalar field
+                importedHeightField.clearField();
+                importedHeightField.interpolateToGrid_MLS();
+                zRangeMin = importedHeightField.zMin;
 
-        
-       existing_paths.clear();
+                // make a copy 
+                importedHeightField_original.clearField();
+                for (int i = 0; i < SF_RES; i++)
+                    for (int j = 0; j < SF_RES; j++)importedHeightField_original.field[i][j] = importedHeightField.field[i][j];
+                importedHeightField_original.scale = importedHeightField.scale;
+            }
+            
+
+        }
+
+     
+
+        // ---------- import existing paths, and BND polygon
+        existing_paths.clear();
         vector <zVector> poly;
 
-        for (auto& crv : curves_in_file)
+        for (const auto& obj : curves)
         {
-            poly.clear();
-            in_RIO.sample_curve_unifrom(crv, poly);
-            existing_paths.push_back(poly);
-        }
-       
-        for (auto& path : existing_paths)
-        {
-            for (auto& p : path)
-            {
-                p.x *= importedHeightField.scale;
-                p.y *= importedHeightField.scale;
-                
+            
+            const ON_Curve* crv = ON_Curve::Cast(obj.geometry);
 
-                float zScl = ofMap(p.z, importedHeightField.zMin, importedHeightField.zMax, importedHeightField.MLS_zMin, importedHeightField.MLS_zMax);
-                p.z = zScl;
+            if( crv && obj.name == L"EXIST_PATH") // all curves with name Attr == EXIST_PATH
+            {
+                wprintf(L"[name EXIST_PATH ] %ls\n", obj.name.c_str());
+                poly.clear();
+                in_RIO.sample_curve_unifrom(crv, poly);
+                existing_paths.push_back(poly);
             }
+
+            if (crv && obj.name == L"BND")
+            {
+                polygon.clear();
+                in_RIO.sample_curve_unifrom(crv, polygon);
+               
+            }
+
         }
+
+        for (auto& path : existing_paths)
+            for (auto& p : path)p *= importedHeightField.scale;
+
+        // ----------- terrain trim
+
+        importedHeightField.rescalePoints(polygon);// scale polygon by same amount as height feild points.
+        importedHeightField.trimFieldWithPolygon(polygon);
+          
     }
     
     
@@ -539,11 +540,11 @@ void keyPress(unsigned char k, int xm, int ym)
         // ----------------- high line contour extraction
         
         // contour segments and ordered set
-        zRangeMin += 1.0;
+        /*zRangeMin += 1.0;
         if (zRangeMin >= importedHeightField.zMax)zRangeMin = importedHeightField.zMin;
 
-        float iso = ofMap( zRangeMin, importedHeightField.MLS_zMin, importedHeightField.MLS_zMax, 0, 1);
-        importedHeightField_original.computeIsocontours(iso);
+        float iso = ofMap( zRangeMin, importedHeightField.MLS_zMin, importedHeightField.MLS_zMax, 0, 1);*/
+        importedHeightField_original.computeIsocontours(threshold);
         std::vector<std::vector<zVector>> contours = importedHeightField_original.getOrderedContours();
 
         // extract largest contiguous set
@@ -591,9 +592,6 @@ void keyPress(unsigned char k, int xm, int ym)
         siteHeightField.scale_scalar_within_polygons(polys);
 
 
-        // -- path storage
-        shortestPaths.clear();
-
         // -- node sets N (poly) & M (poses);
 
         
@@ -603,10 +601,13 @@ void keyPress(unsigned char k, int xm, int ym)
         // -- paths from M nodes to N nodes
         // poly x poses[i].c
 
+        // -- path storage
+        shortestPaths.clear();
         vector<zVector> sources, sinks;
         //for (int n = 0; n < poly.size(); n++)sources.push_back(poly[n]);
         sources.push_back(poly[0]);
         sources.push_back( poly[poly.size() - 1] ); 
+        shortestPaths.clear();
 
         for (int m = 0; m < poses.size(); m++)sinks.push_back(poses[m].c);
 
@@ -621,7 +622,7 @@ void keyPress(unsigned char k, int xm, int ym)
         siteHeightField.clearField();
         for (int i = 0; i < SF_RES; i++)
             for (int j = 0; j < SF_RES; j++)
-                siteHeightField.field[i][j] = importedHeightField.field[i][j];
+                siteHeightField.field[i][j] = importedHeightField_original.field[i][j];
 
         siteHeightField.trimFieldWithPolygon(nn.polygon);
 
@@ -734,10 +735,7 @@ void keyPress(unsigned char k, int xm, int ym)
     }
 
 
-    if (k == 'o')
-    {
-        plots[0].makeCentersEquiDistant(plots, nn.polygon);
-    }
+
 
     // --------------- SITE DEFINITION AND NUERAL NET COVERAGE POLYGON  ---------------
 
@@ -748,7 +746,7 @@ void keyPress(unsigned char k, int xm, int ym)
 
         // -------- get contours and order them
 
-        zRangeMin += 1.0;
+        zRangeMin += 1.0 * importedHeightField.scale; //real dims * scale factor ; zMAx,zMIn, MLS_zMIn,MLS_zMax all already scaled.
         if (zRangeMin >= importedHeightField.zMax)zRangeMin = importedHeightField.zMin;
 
 

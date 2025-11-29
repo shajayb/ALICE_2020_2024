@@ -118,12 +118,18 @@ public:
     std::vector<sdfSamples> sdfSamplePoints;
     zVector sdfSample_centroid;
 
+    std::vector<Pose2D> poses;
+    vector<float> output, input;
+    double loss;
+
     heightfieldNN() {}
 
     heightfieldNN(int _n)
     {
         n = _n;
-        initialize(2 * n, { 16 }, 4 * n); // dummy input = 1; output = n × (center + dir)
+        initialize(2 * n, { 16,4,16 }, 4 * n); // dummy input = 1; output = n × (center + dir)
+
+        input.assign(inputDim, 0);
     }
 
     // ------------------
@@ -410,7 +416,7 @@ public:
 
         }
 
-
+        loss = sdfLoss;
         return sdfLoss;
     }
 
@@ -468,7 +474,40 @@ public:
 
     }
 
-    void drawPolygon()
+
+    void draw_output_and_loss()
+    {
+        poses.clear();
+        output = forward(input);
+        extractPoses(output, poses, true);
+        //
+
+
+        glPointSize(5);
+        glColor3f(0, 0, 0);
+        for (auto& pose : poses)
+        {
+            drawPoint(zVecToAliceVec(pose.c));
+            // drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + pose.v * 5.0));
+            zVector dir = pose.v;
+            dir.normalize();
+            drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + dir * 2.0));
+            drawCircle(zVecToAliceVec(pose.c), radius, 32);
+        }
+        glPointSize(1);
+
+        //
+        setup2d();
+
+            char s[200];
+            sprintf(s, "%.4f", loss);
+            drawText(string(s), 50, 450);
+
+        restore3d();
+
+    }
+
+    void drawCoveragePolygon()
     {
         if (polygon.empty()) return;
 

@@ -82,7 +82,7 @@ struct SkelEdge
 
 
 #define OUT 1e6
-#define SF_RES 64
+#define SF_RES 200
 
 class ScalarField2D
 {

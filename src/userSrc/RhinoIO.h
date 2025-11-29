@@ -23,6 +23,15 @@
 
 using namespace zSpace;
 
+struct RhinoObjectInfo
+{
+    std::wstring name;
+    std::wstring layer;
+    ON_UUID uuid;
+    const ON_Geometry* geometry;
+};
+
+
 class RhinoIO
 {
 public:
@@ -191,8 +200,117 @@ public:
     }
 
     // ----------------------------------------------------
-    // Group planar horizontal curves by Z height
+    // SCENE TREE ITERATION
     // ----------------------------------------------------
+
+
+    inline std::vector<RhinoObjectInfo> GetObjectInfo() const
+    {
+        std::vector<RhinoObjectInfo> out;
+
+        ONX_ModelComponentIterator it(model, ON_ModelComponent::Type::ModelGeometry);
+
+        for (ON_ModelComponentReference ref = it.FirstComponentReference();
+            !ref.IsEmpty();
+            ref = it.NextComponentReference())
+        {
+            const ON_ModelGeometryComponent* geoComp =
+                ON_ModelGeometryComponent::Cast(ref.ModelComponent());
+            if (!geoComp)
+                continue;
+
+            // Attributes
+            const ON_3dmObjectAttributes* attr =
+                geoComp->Attributes(nullptr);
+            if (!attr)
+                continue;
+
+            RhinoObjectInfo info;
+
+            // -----------------------------
+            // NAME
+            // -----------------------------
+            const wchar_t* nm = attr->m_name.Array();
+            info.name = (nm && nm[0] != L'\0') ? nm : L"";
+
+            // -----------------------------
+            // UUID
+            // -----------------------------
+            info.uuid = attr->m_uuid;
+
+            // -----------------------------
+            // GEOMETRY
+            // -----------------------------
+            info.geometry = geoComp->Geometry(nullptr);
+
+            // -----------------------------
+            // LAYER  (Correct API)
+            // -----------------------------
+            int layer_index = attr->m_layer_index;
+
+            ON_ModelComponentReference layer_ref =
+                model.ComponentFromIndex(ON_ModelComponent::Type::Layer,
+                    layer_index);
+
+            const ON_Layer* layer = ON_Layer::Cast(layer_ref.ModelComponent());
+
+            if (layer)
+            {
+                const wchar_t* lname = layer->Name().Array();
+                info.layer = (lname ? lname : L"");
+            }
+            else
+            {
+                info.layer = L"";
+            }
+
+            out.emplace_back(std::move(info));
+        }
+
+        return out;
+    }
+
+    inline void SeparateGeometryTypes(
+        const std::vector<RhinoObjectInfo>& objects,
+        std::vector<RhinoObjectInfo>& outCurves,
+        std::vector<RhinoObjectInfo>& outMeshes,
+        std::vector<RhinoObjectInfo>& outPointClouds)
+    {
+        outCurves.clear();
+        outMeshes.clear();
+        outPointClouds.clear();
+
+        for (const auto& obj : objects)
+        {
+            const ON_Geometry* g = obj.geometry;
+            if (!g)
+                continue;
+
+            // CURVE
+            if (ON_Curve::Cast(g))
+            {
+                outCurves.push_back(obj);
+                continue;
+            }
+
+            // MESH
+            if (ON_Mesh::Cast(g))
+            {
+                outMeshes.push_back(obj);
+                continue;
+            }
+
+            // POINT CLOUD
+            if (ON_PointCloud::Cast(g))
+            {
+                outPointClouds.push_back(obj);
+                continue;
+            }
+
+            // Add more geometry types here if needed (Brep, Surface...)
+        }
+    }
+
 
     inline void GroupPlanarHorizontalCurves(
         std::map<int, std::vector<const ON_Curve*>>& zGroups)
@@ -260,7 +378,7 @@ public:
     }
 
     inline void readCurves(
-         std::vector<const ON_Curve*>& curves)
+        std::vector<const ON_Curve*>& curves)
     {
         curves.clear();
 
@@ -275,6 +393,8 @@ public:
             const ON_ModelGeometryComponent* geoComp =
                 ON_ModelGeometryComponent::Cast(ref.ModelComponent());
 
+
+
             if (!geoComp)
             {
                 continue;
@@ -288,16 +408,20 @@ public:
 
             cout << "geom" << endl;
 
+
+
             const ON_Curve* crv = ON_Curve::Cast(geom);
             if (!crv)
             {
                 continue;
             }
 
+
+
             cout << "curve geom" << endl;
             curves.push_back(crv);
 
-            
+
         }
     }
 
