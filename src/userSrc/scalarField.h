@@ -229,8 +229,6 @@ public:
         rescaleFieldToRange(-1, 1);//closedfields rescale to -1,1
     }
 
-
-
     void addCircleSDFs(vector<zVector> rbfCenters, float radius = 2.0)
     {
         for (int i = 0; i < SF_RES; i++)
@@ -256,6 +254,148 @@ public:
 
         rescaleFieldToRange(-1, 1);
     }
+
+    // ===============================================================
+// COMPUTE SDF FROM A SET OF POLYLINES AND UNION THEM
+// ===============================================================
+// Put this inside ScalarField2D (public: or private:) — Allman style.
+    inline float sdfSegment( zVector& p,  zVector& a,  zVector& b)
+    {
+        zVector ab = b - a;
+        zVector ap = p - a;
+
+        float denom = ab * ab;
+        if (denom <= 1e-12f)
+        {
+            // Degenerate segment: treat as point
+            return p.distanceTo(a);
+        }
+
+        float t = (ap * ab) / denom;
+        t = std::max(0.0f, std::min(1.0f, t));
+
+        zVector closest = a + ab * t;
+        return p.distanceTo(closest);
+    }
+
+    // Union-of-polylines SDF; thickness = tube radius around polylines
+    inline void addSDFfromPolylines
+    (
+        std::vector<std::vector<zVector>>& polylines,
+        float thickness = 0.0f
+    )
+    {
+        clearField(); // zero gradients/contours etc. (already in your class)
+
+        // Initialize to +inf so mins work
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                field[i][j] = OUT;
+            }
+        }
+
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                zVector p = gridPoints[i][j];
+                float dmin = OUT;
+
+                for ( auto& poly : polylines)
+                {
+                    if (poly.size() < 2) continue;
+
+                    for (int k = 0; k < (int)poly.size() - 1; k++)
+                    {
+                        dmin = std::min(dmin, sdfSegment(p, poly[k], poly[k + 1]));
+                    }
+                }
+
+                // Signed: negative inside the tube (radius = thickness)
+                field[i][j] = dmin - thickness;
+            }
+        }
+
+        // Keep your usual normalization (you already have this helper)
+        rescaleFieldToRange(-1.0f, 1.0f);
+    }
+    
+    //------------
+    inline bool pointInPolygon(const zVector& p, const std::vector<zVector>& poly)
+    {
+        bool inside = false;
+        int n = poly.size();
+
+        for (int i = 0, j = n - 1; i < n; j = i++)
+        {
+            const zVector& a = poly[i];
+            const zVector& b = poly[j];
+
+            bool intersect =
+                ((a.y > p.y) != (b.y > p.y)) &&
+                (p.x < (b.x - a.x) * (p.y - a.y) / ((b.y - a.y) + 1e-9f) + a.x);
+
+            if (intersect)
+                inside = !inside;
+        }
+        return inside;
+    }
+
+
+    inline void addSDFfromClosedPolygon( std::vector<zVector>& poly)
+    {
+        if (poly.size() < 3) return; // not a valid closed polygon
+
+        clearField();
+
+        // --- SDF helper: point-to-segment ---
+        auto sdfSegment = [&]( zVector& p,  zVector& a,  zVector& b)
+            {
+                zVector ab = b - a;
+                zVector ap = p - a;
+
+                float denom = ab * ab;
+                if (denom <= 1e-12f)
+                {
+                    return p.distanceTo(a);
+                }
+
+                float t = (ap * ab) / denom;
+                t = std::max(0.0f, std::min(1.0f, t));
+                zVector q = a + ab * t;
+                return p.distanceTo(q);
+            };
+
+        // --- Loop over grid ---
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                zVector p = gridPoints[i][j];
+
+                // 1) Distance to boundary (unsigned)
+                float dmin = OUT;
+                for (int k = 0; k < (int)poly.size(); k++)
+                {
+                     zVector& a = poly[k];
+                     zVector& b = poly[(k + 1) % poly.size()];
+                    dmin = std::min(dmin, sdfSegment(p, a, b));
+                }
+
+                // 2) Sign of SDF: negative if inside
+                bool inside = pointInPolygon(p, poly);
+
+                field[i][j] = inside ? -dmin : dmin;
+            }
+        }
+
+        // Optional normalization to [-1, 1]
+        rescaleFieldToRange(-1.0f, 1.0f);
+    }
+
+
     //----------------------------------------
     
     void unionWith( ScalarField2D& other)
@@ -483,9 +623,9 @@ public:
 
        
 
-        printf(" min max field values %.2f, %.2f,%.2f,%.2f \n", minVal[0], maxVal[0], minVal[1], maxVal[1]);
+        //printf(" min max field values %.2f, %.2f,%.2f,%.2f \n", minVal[0], maxVal[0], minVal[1], maxVal[1]);
         minMax(minVal[0], maxVal[0]);
-        printf(" min max field values after rescale %.2f, %.2f \n", minVal[0], maxVal[0]);
+       // printf(" min max field values after rescale %.2f, %.2f \n", minVal[0], maxVal[0]);
        // printf(" range1 range2 %.2f, %.2f \n", range[0], range[1]);
     }
 
@@ -948,7 +1088,7 @@ public:
         }
     }
 
-    std::vector<std::vector<zVector>> getOrderedContours(float tolerance = 1e-4f)
+    vector< vector<zVector> > getOrderedContours(float tolerance = 1e-4f)
     {
         allContours.clear();
         if (isolines.empty()) return allContours;
@@ -1017,7 +1157,27 @@ public:
         return allContours;
     }
 
- 
+    float area_of_contour_island( vector<zVector> &island)
+    {
+        auto Mod = [](int a, int n) -> int {
+            a = a % n;
+            return (a < 0) ? a + n : a;
+            };
+
+        int n = island.size();
+        if (n < 3) return 0.0f; // not a polygon
+
+        float area = 0.0f;
+
+        for (int i = 0; i < n; i++)
+        {
+            int j = Mod(i + 1, n);
+            area += (island[i].x * island[j].y) - (island[j].x * island[i].y);
+        }
+
+        area = 0.5f * fabs(area);
+        return area;
+    }
     //---------------------------------------------
 
     // -----------------------------------------------------------------------------

@@ -94,6 +94,193 @@ void drawText(string& str, float x = 50, float y = 100)
 
 
 
+inline void drawCube_Lambert
+(
+    Alice::vec& minPt,
+    Alice::vec& maxPt,
+    Alice::vec& origin = Alice::vec(0, 0, 0),
+    bool wire = false
+)
+{
+    // -----------------------------------------------------------
+    // Enable basic Lambert (diffuse) lighting
+    // -----------------------------------------------------------
+    //glEnable(GL_LIGHTING);
+    //glEnable(GL_LIGHT0);
+    //glEnable(GL_NORMALIZE);
+    //glShadeModel(GL_FLAT);
+
+    //GLfloat lightPos[] = { 0.3f, 0.6f, 1.0f, 0.0f };
+    //GLfloat lightDiffuse[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    //GLfloat lightAmbient[] = { 0.15f, 0.15f, 0.15f, 1.0f };
+    //GLfloat lightSpecular[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+    //glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
+    //glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
+    //glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient);
+    //glLightfv(GL_LIGHT0, GL_SPECULAR, lightSpecular);
+
+    //// -----------------------------------------------------------
+    //// Material: flat grey Lambert
+    //// -----------------------------------------------------------
+    //GLfloat diffuseColor[] = { 0.5,0.5,0.5,1.0 };
+    //GLfloat ambientColor[] = { 0.25f, 0.25f, 0.25f,1.0 };
+
+    //glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, diffuseColor);
+    //glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, ambientColor);
+
+    // Cube coordinates
+    float xmin = minPt.x - origin.x;
+    float ymin = minPt.y - origin.y;
+    float zmin = minPt.z - origin.z;
+
+    float xmax = maxPt.x - origin.x;
+    float ymax = maxPt.y - origin.y;
+    float zmax = maxPt.z - origin.z;
+
+    if (wire)
+    {
+       // glDisable(GL_LIGHTING);
+        glBegin(GL_LINES);
+        glColor3f(1, 0, 0);
+
+        // edges
+        glVertex3f(xmin, ymin, zmin); glVertex3f(xmax, ymin, zmin);
+        glVertex3f(xmin, ymax, zmin); glVertex3f(xmax, ymax, zmin);
+        glVertex3f(xmin, ymin, zmax); glVertex3f(xmax, ymin, zmax);
+        glVertex3f(xmin, ymax, zmax); glVertex3f(xmax, ymax, zmax);
+
+        glVertex3f(xmin, ymin, zmin); glVertex3f(xmin, ymax, zmin);
+        glVertex3f(xmax, ymin, zmin); glVertex3f(xmax, ymax, zmin);
+        glVertex3f(xmin, ymin, zmax); glVertex3f(xmin, ymax, zmax);
+        glVertex3f(xmax, ymin, zmax); glVertex3f(xmax, ymax, zmax);
+
+        glVertex3f(xmin, ymin, zmin); glVertex3f(xmin, ymin, zmax);
+        glVertex3f(xmax, ymin, zmin); glVertex3f(xmax, ymin, zmax);
+        glVertex3f(xmin, ymax, zmin); glVertex3f(xmin, ymax, zmax);
+        glVertex3f(xmax, ymax, zmin); glVertex3f(xmax, ymax, zmax);
+
+        glEnd();
+       // glEnable(GL_LIGHTING);
+        return;
+    }
+
+    // -----------------------------------------------------------
+    // Flat-shaded faces
+    // -----------------------------------------------------------
+    glColor3f(0.5, 0.5, 0.5);
+    glBegin(GL_QUADS);
+
+    glNormal3f(0, 0, 1);
+    glVertex3f(xmin, ymin, zmax);
+    glVertex3f(xmax, ymin, zmax);
+    glVertex3f(xmax, ymax, zmax);
+    glVertex3f(xmin, ymax, zmax);
+
+    glNormal3f(0, 0, -1);
+    glVertex3f(xmax, ymin, zmin);
+    glVertex3f(xmin, ymin, zmin);
+    glVertex3f(xmin, ymax, zmin);
+    glVertex3f(xmax, ymax, zmin);
+
+    glNormal3f(1, 0, 0);
+    glVertex3f(xmax, ymin, zmax);
+    glVertex3f(xmax, ymin, zmin);
+    glVertex3f(xmax, ymax, zmin);
+    glVertex3f(xmax, ymax, zmax);
+
+    glNormal3f(-1, 0, 0);
+    glVertex3f(xmin, ymin, zmin);
+    glVertex3f(xmin, ymin, zmax);
+    glVertex3f(xmin, ymax, zmax);
+    glVertex3f(xmin, ymax, zmin);
+
+    glNormal3f(0, 1, 0);
+    glVertex3f(xmin, ymax, zmax);
+    glVertex3f(xmax, ymax, zmax);
+    glVertex3f(xmax, ymax, zmin);
+    glVertex3f(xmin, ymax, zmin);
+
+    glNormal3f(0, -1, 0);
+    glVertex3f(xmin, ymin, zmin);
+    glVertex3f(xmax, ymin, zmin);
+    glVertex3f(xmax, ymin, zmax);
+    glVertex3f(xmin, ymin, zmax);
+
+    glEnd();
+
+    /*glDisable(GL_LIGHTING);
+    glDisable(GL_LIGHT0);
+    glDisable(GL_NORMALIZE);*/
+    //glShadeModel(GL_FLAT);
+}
+
+
+//---------------------------------------------------------------
+// Draw an oriented cube aligned to `direction` and centered at `center`
+//---------------------------------------------------------------
+inline void drawOrientedCube
+(
+    const zVector& center,
+    const zVector& direction,
+    float len = 6.0f,
+    float wid = 2.75f,
+    float ht = 1.5f
+
+)
+{
+    glPushMatrix();
+
+    // --- 1. Translate to center ---
+    glTranslatef(center.x, center.y, center.z);
+
+    // --- 2. Compute rotation to align X-axis to 'direction' ---
+    zVector dir = direction;
+    dir.normalize();
+
+    zVector xAxis(1, 0, 0);
+
+    // Rotation axis = xAxis × dir
+    zVector rotAxis = xAxis ^ dir;
+    float axisLen = rotAxis.length();
+
+    if (axisLen > 1e-6)
+    {
+        rotAxis /= axisLen;
+
+        float dot = xAxis * dir;
+        dot = std::max(-1.0f, std::min(1.0f, dot)); // clamp for safety
+        float angleDeg = acos(dot) * 180.0f / PI;
+
+        glRotatef(angleDeg, rotAxis.x, rotAxis.y, rotAxis.z);
+    }
+    else
+    {
+        // direction is parallel or opposite to xAxis
+        if ((xAxis * dir) < 0.0f)
+        {
+            glRotatef(180.0f, 0, 1, 0);  // flip
+        }
+    }
+
+    // --- 3. Scale unit cube to requested dimensions ---
+    glScalef(len, wid, ht);
+
+    // --- 4. Draw unit cube [-0.5, 0.5] using your utility ---
+    Alice::vec mn(-0.5f, -0.5f, -0.5f);
+    Alice::vec mx(0.5f, 0.5f, 0.5f);
+    Alice::vec origin(0, 0, 0);
+
+    
+
+    drawCube_Lambert(mn, mx, origin, false);
+    drawCube_Lambert(mn, mx, origin, true);
+
+
+    glPopMatrix();
+}
+
+
 // - ----------- OTHER CUSTOM FUNCTIONS  -----------
 
 
@@ -114,8 +301,21 @@ void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
     for (auto plot : plots)
     {
         poly.clear();
-        for (int i = 0; i < plot.nPoints; i++)poly.push_back(plot.polyPoints[i]);
+        for (int i = 0; i < plot.nPoints; i++)poly.push_back(plot.polyPoints[i] * 1000);
 
+        all_polygons.push_back(poly);
+
+        // -- add curve representing oriented 12 x 5 box ;
+
+        poly.clear();
+        //
+            plot.setDefaultBox_OrientedRectangle(12 * 0.5, 5.5 * 0.5, plot.directionOfBox);
+            plot.invertBox(plot.directionOfBox);
+            plot.transformBox();
+            plot.flipNormals();
+        
+        //
+        for (int i = 0; i < plot.nPoints; i++)poly.push_back(plot.polyPoints[i] * 1000);
         all_polygons.push_back(poly);
 
     }
@@ -140,7 +340,7 @@ void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
 
         for (int i = 0; i < 5; i++)
         {
-            zVector pt = (z_pts[i] / scale);
+            zVector pt = (z_pts[i] / scale) * 1000;
             pts.Append(ON_3dPoint(pt.x, pt.y, pt.z));
         }
 
@@ -291,18 +491,20 @@ void draw_paths(vector< vector<zVector> >& allPaths)
 }
 
 
+
+
 // ------------------------- APP ----------------------------------
 // ------------------------- - ----------------------------------
 // ------------------------- - ----------------------------------
 
 // -- height field
-HeightField2D importedHeightField, importedHeightField_original, siteHeightField;
-double threshold;
+HeightField2D importedHeightField, importedHeightField_original, siteHeightField, existingPathsField;
+double threshold = -0.05;
 
 // site definition
 
 float zRangeMin;
-std::vector<zVector> polygon;
+vector<zVector> polygon;
 
 // -- height field nn
 
@@ -354,7 +556,7 @@ void setup()
 
     // ----------- NN ----------------
 
-    nn = heightfieldNN(30); // or however many poses you want
+    nn = heightfieldNN(25); // or however many poses you want
 
     // ----- reserve input and output dimensions
     
@@ -370,11 +572,17 @@ void setup()
     // ----- spatial bins
 
     SG = *new spaceGrid();
+
+    // ----------- tmp 
+
+    keyPress('2', 0, 0);
+    for (int i = 0; i < 10; i++)keyPress('=', 0, 0);
+    
 }
 
 void update(int value)
 {
-    if (compute) keyPress('l', 0, 0);
+    if (compute) keyPress('t', 0, 0);
 }
 
 void draw()
@@ -386,7 +594,8 @@ void draw()
     // ----------------------- imported heightfield and sample points 
 
     importedHeightField.drawSamplePoints();
-   // importedHeightField.drawFieldPoints(true, false);
+    //importedHeightField.drawFieldPoints(true, false);
+    //importedHeightField.drawIsocontours(threshold);
 
     // ----------------------- parcels
 
@@ -408,21 +617,57 @@ void draw()
     nn.visualize(zVector(50, 350, 0), 200, 250);
     nn.drawCoveragePolygon();
     nn.draw_output_and_loss();
-    
+    //nn.drawCoverageSamples();
 
+    for (auto pose : nn.poses)
+    {
+        float z = importedHeightField.getFieldValue(pose.c);
+        pose.c.z = importedHeightField.mapIsoToActualHeight(z);
+
+        
+        drawOrientedCube(pose.c, pose.v);
+        
+        glColor3f(0, 0, 0);
+        drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + zVector(0, 0, -z)));
+    }
+    
     //
     glColor3f(0, 0, 1);
     
-    importedHeightField_original.clippedContour(threshold, clippedContour, nn.polygon);
-    draw_path(clippedContour);
+    /*if(nn.polygons.size() > 0)
+    {
+        importedHeightField_original.clippedContour(threshold, clippedContour, nn.polygons[0]);
+        draw_path(clippedContour);
+    }*/
     
    // importedHeightField_original.computeGradient();
     //importedHeightField_original.drawStreamlinesFromSeeds(importedHeightField_original.lastShortestPath);
 
-    if( plots.size() > 0)
+    
+
+    //if( plots.size() > 0)
     {
-        siteHeightField.drawFieldPoints();
+       // siteHeightField.drawFieldPoints();
         //siteHeightField.drawIsocontours(threshold);
+
+       // glTranslatef(100, 0, 0);
+       // existingPathsField.drawFieldPoints();
+        existingPathsField.clearField();
+        float scale = importedHeightField.scale;
+        float hlen = 12 * 0.5 * scale;
+        float hw = 5.5 * 0.5 * scale;
+
+        for (int i = 0; i < SF_RES; i++)
+        {
+            for (int j = 0; j < SF_RES; j++)
+            {
+                existingPathsField.field[i][j] = evalBlendedOrientedRectSDF(existingPathsField.gridPoints[i][j], nn.poses, hlen,hw );
+            }
+        }
+        
+        existingPathsField.rescaleFieldToRange(-1, 1);
+        //existingPathsField.drawFieldPoints();
+        existingPathsField.drawIsocontours(threshold);
     }
 
 
@@ -513,11 +758,21 @@ void keyPress(unsigned char k, int xm, int ym)
         for (auto& path : existing_paths)
             for (auto& p : path)p *= importedHeightField.scale;
 
+        existingPathsField.clearField();
+        existingPathsField.addSDFfromPolylines(existing_paths,3);
+     
+        // put the path back along terrain;
+        for (auto& path : existing_paths)
+            for (auto& p : path)
+            {
+                p.z = importedHeightField.getFieldValue(p);
+                p.z = importedHeightField.mapIsoToActualHeight(p.z);
+            }
         // ----------- terrain trim
 
         importedHeightField.rescalePoints(polygon);// scale polygon by same amount as height feild points.
         importedHeightField.trimFieldWithPolygon(polygon);
-          
+        importedHeightField.subtract(existingPathsField);
     }
     
     
@@ -527,10 +782,11 @@ void keyPress(unsigned char k, int xm, int ym)
 
         vector<zVector> plot_centers;
         for (auto& parcel : plots)
-            if (pointInsidePolygon(parcel.centerOfBox, nn.polygon)) plot_centers.push_back(parcel.centerOfBox);
+            for (auto& poly : nn.polygons)
+                    if (pointInsidePolygon(parcel.centerOfBox, poly)) plot_centers.push_back(parcel.centerOfBox);
 
         siteHeightField.addVoronoi(plot_centers);
-        siteHeightField.trimFieldWithPolygon(nn.polygon);
+        siteHeightField.trimFieldWithPolygons(nn.polygons);
 
        // siteHeightField.rescaleFieldToRange();
     }
@@ -571,7 +827,9 @@ void keyPress(unsigned char k, int xm, int ym)
         for (int n = 0; n < 5; n++)importedHeightField_original.smoothPath(poly);
 
         importedHeightField_original.lastShortestPath.clear();
-        for (auto& p : poly)if (pointInsidePolygon(p, nn.polygon)) importedHeightField_original.lastShortestPath.push_back(p);
+        for (auto& p : poly)
+            for (auto& poly : nn.polygons)
+                if (pointInsidePolygon(p, poly)) importedHeightField_original.lastShortestPath.push_back(p);
 
         poly = importedHeightField_original.lastShortestPath;
 
@@ -582,13 +840,15 @@ void keyPress(unsigned char k, int xm, int ym)
             for (int j = 0; j < SF_RES; j++)
                 siteHeightField.field[i][j] = importedHeightField_original.field[i][j];
         
-        siteHeightField.trimFieldWithPolygon(nn.polygon);
+        siteHeightField.trimFieldWithPolygons(nn.polygons);
 
         // cost field scaling
 
         vector<vector<zVector>> polys;
         for (auto& parcel : plots)
-            if (pointInsidePolygon(parcel.centerOfBox, nn.polygon)) polys.push_back(parcel.polyPoints);
+            for (auto& poly : nn.polygons)
+                if (pointInsidePolygon(parcel.centerOfBox, poly)) polys.push_back(parcel.polyPoints);
+
         siteHeightField.scale_scalar_within_polygons(polys);
 
 
@@ -611,7 +871,8 @@ void keyPress(unsigned char k, int xm, int ym)
 
         for (int m = 0; m < poses.size(); m++)sinks.push_back(poses[m].c);
 
-        shortest_paths_N_x_M(sources, sinks, siteHeightField, shortestPaths, nn.polygon);
+        if(nn.polygons.size() >0 )
+        shortest_paths_N_x_M(sources, sinks, siteHeightField, shortestPaths, nn.polygons[0]);
 
 
     }
@@ -624,13 +885,15 @@ void keyPress(unsigned char k, int xm, int ym)
             for (int j = 0; j < SF_RES; j++)
                 siteHeightField.field[i][j] = importedHeightField_original.field[i][j];
 
-        siteHeightField.trimFieldWithPolygon(nn.polygon);
+        siteHeightField.trimFieldWithPolygons(nn.polygons);
 
         // cost field scaling
 
         vector< vector<zVector> > polys;
         for (auto& parcel : plots)
-            if (pointInsidePolygon(parcel.centerOfBox, nn.polygon)) polys.push_back(parcel.polyPoints);
+            for (auto& poly : nn.polygons)
+                if (pointInsidePolygon(parcel.centerOfBox, poly)) polys.push_back(parcel.polyPoints);
+
         siteHeightField.scale_scalar_within_polygons(polys);
 
         // node set
@@ -645,7 +908,8 @@ void keyPress(unsigned char k, int xm, int ym)
         for (int n = 0; n < 1/*poses.size()*/; n++)sources.push_back(poses[n].c);
         for (int m = 0; m < poses.size(); m++)sinks.push_back(poses[m].c);
 
-        shortest_paths_N_x_M(sources, sinks, siteHeightField, shortestPaths, nn.polygon);
+        if(nn.polygons.size() > 0)
+        shortest_paths_N_x_M(sources, sinks, siteHeightField, shortestPaths, nn.polygons[0]);
 
         
     }
@@ -682,16 +946,21 @@ void keyPress(unsigned char k, int xm, int ym)
         {
             plot.centerOfBox = pose.c;
 
-            zVector dir = importedHeightField.gradientAt(pose.c);
+            /*float z = importedHeightField.getFieldValue(pose.c);
+            z = importedHeightField.mapIsoToActualHeight(z);
+            plot.centerOfBox.z = z;*/
+
+            zVector dir = pose.v;
             dir.normalize();
             dir.z = 0;
-            dir = dir ^ zVector(0, 0, 1);
-            dir.normalize();
+           /* dir = dir ^ zVector(0, 0, 1);
+            dir.normalize();*/
             plot.directionOfBox = dir;
 
 
-            plot.setDefaultBox();
-            //plot.importPrimitive(polygon);
+            //plot.setDefaultBox();
+            plot.setDefaultBox_OrientedRectangle(12 * 0.5, 5.5 * 0.5, dir);
+            plot.invertBox(dir);
             plot.transformBox();
             plot.flipNormals();
 
@@ -725,7 +994,8 @@ void keyPress(unsigned char k, int xm, int ym)
                 SG.addPosition(parcel.polyPoints[i]);
             }
 
-        for (auto p : nn.polygon)SG.addPosition(p);
+        for (auto poly : nn.polygons)
+            for (auto p : poly)SG.addPosition(p);
 
         for (auto p : importedHeightField_original.lastShortestPath)SG.addPosition(p);
 
@@ -755,34 +1025,30 @@ void keyPress(unsigned char k, int xm, int ym)
         importedHeightField.computeIsocontours(iso);
         std::vector<std::vector<zVector>> contours = importedHeightField.getOrderedContours();
 
+         
 
         // -------- find contour island with most points
 
-        vector<zVector> poly;
+        vector< vector<zVector>>  polys;
         size_t maxPts = 0;
 
         for (int i = 0; i < contours.size(); i++)
-        {
+            if ( importedHeightField.area_of_contour_island( contours[i]) > 50) polys.push_back(contours[i]);
 
-            if (contours[i].size() > maxPts)
-            {
-                maxPts = contours[i].size();
-                poly = contours[i];
-            }
-        }
-
-        cout << maxPts << " -- " << poly.size() << endl;
+        cout << maxPts << " -- " << polys.size() << endl;
 
         // -------- if contour island is valid, set it as polygon for NN to cover with sites.
 
-        if (poly.size() > 2)
+        if (polys.size() > 0)
         {
             // -------- smooth contour
-            for (int i = 0; i < 15; i++) importedHeightField.smoothPath(poly);
+            for( auto &poly : polys)
+                for (int i = 0; i < 15; i++) importedHeightField.smoothPath(poly);
+
 
             // -------- set contour as polygon of NN and generate sample points within
-            nn.setTargetPolygon(poly);
-            nn.generateSDFSamplePointsFromPolygon();
+            nn.setTargetPolygons(polys);
+            nn.generateSDFSamplePointsFromPolygons();
 
         }
 

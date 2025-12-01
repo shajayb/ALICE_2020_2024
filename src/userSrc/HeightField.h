@@ -646,6 +646,11 @@ public:
 
     }
 
+    void trimFieldWithPolygons(vector< vector<zVector> >& polys)
+    {
+        for (auto& poly : polys)trimFieldWithPolygon(poly);
+    }
+
     //void scale_feild_values_within(zVector *pts, int N)
     //{
     //    for (int i = 0; i < SF_RES; i++)
@@ -846,6 +851,8 @@ public:
         poly = lastShortestPath;
     }
 
+    
+
     //------------------------------------------------------------
     // SMOOTHING
     //------------------------------------------------------------
@@ -1018,6 +1025,52 @@ public:
         // Lerp Y (Combine Bottom and Top)
         return bot * (1.0f - ty) + top * ty;
     }
+
+    //------------------------------------------------------------
+    // BILINEAR SCALAR LOOKUP (world-space input)
+    float mapIsoToActualHeight(float iso)
+    {
+
+        return iso * (MLS_zMax - MLS_zMin) + MLS_zMin;
+    }
+
+
+    float getFieldValue(zVector& p)
+    {
+        // Map world space → [0,1]
+        float u = (p.x + 50.0f) / 100.0f;
+        float v = (p.y + 50.0f) / 100.0f;
+
+        // Clamp
+        u = std::clamp(u, 0.0f, 1.0f);
+        v = std::clamp(v, 0.0f, 1.0f);
+
+        // Convert to grid index
+        float gx = u * (SF_RES - 1);
+        float gy = v * (SF_RES - 1);
+
+        int x0 = (int)floor(gx);
+        int y0 = (int)floor(gy);
+        int x1 = std::min(x0 + 1, SF_RES - 1);
+        int y1 = std::min(y0 + 1, SF_RES - 1);
+
+        // Fractional coords
+        float tx = gx - float(x0);
+        float ty = gy - float(y0);
+
+        // Fetch values
+        float f00 = field[x0][y0];
+        float f10 = field[x1][y0];
+        float f01 = field[x0][y1];
+        float f11 = field[x1][y1];
+
+        // Bilinear interpolation
+        float bot = f00 * (1.0f - tx) + f10 * tx;
+        float top = f01 * (1.0f - tx) + f11 * tx;
+
+        return bot * (1.0f - ty) + top * ty;
+    }
+
 
     //------------------------------------------------------------
     // STREAMLINES (OPTIONAL, MATCHING LVM STRUCTURE)

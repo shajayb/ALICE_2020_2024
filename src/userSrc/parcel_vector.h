@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #define _PARCEL_VECTOR_
 #ifdef _PARCEL_VECTOR_
@@ -202,6 +202,122 @@ public:
         computeNormals();
     }
 
+    void setDefaultBox_OrientedRectangle
+    (
+        float length = 8.0f,
+        float width = 4.0f,
+        zVector orientation = zVector(1, 0, 0),
+        int N = 75
+    )
+    {
+        // -------------------------------------------------------
+        // 0. Clear existing polygon points
+        // -------------------------------------------------------
+
+        
+        polyPoints.clear();
+      
+
+        // -------------------------------------------------------
+        // 1. Compute local rectangle axes
+        // -------------------------------------------------------
+        zVector u = orientation;
+        u.normalize();
+
+        zVector v = u;
+        std::swap(v.x, v.y);
+        v.x *= -1;
+        v.normalize();
+
+        float hl = length * 0.5f;
+        float hw = width * 0.5f;
+
+        // -------------------------------------------------------
+        // 2. Compute rectangle corners (avoid using -u)
+        // -------------------------------------------------------
+        zVector C0 = u * hl + v * hw;
+        zVector C1 = u * hl + v * -hw;
+        zVector C2 = u * -hl + v * -hw;
+        zVector C3 = u * -hl + v * hw;
+
+        // -------------------------------------------------------
+        // 3. Edge lengths
+        // -------------------------------------------------------
+        float L01 = C0.distanceTo(C1);
+        float L12 = C1.distanceTo(C2);
+        float L23 = C2.distanceTo(C3);
+        float L30 = C3.distanceTo(C0);
+
+        float perimeter = L01 + L12 + L23 + L30;
+
+       
+
+        int E0 = int((L01 / perimeter) * N);
+        int E1 = int((L12 / perimeter) * N);
+        int E2 = int((L23 / perimeter) * N);
+        int E3 = N - (E0 + E1 + E2);
+
+        // -------------------------------------------------------
+        // 4. Edge sampling function (uses push_back + no const)
+        // -------------------------------------------------------
+        auto sampleEdge =
+            [&](zVector A, zVector B, int count)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    float t = (count > 1) ? float(i) / float(count) : 0.0f;
+                    zVector P = A * (1.0f - t) + B * t;
+                    polyPoints.push_back(P);
+                }
+            };
+
+        // -------------------------------------------------------
+        // 5. Sample all four edges in order
+        // -------------------------------------------------------
+        sampleEdge(C0, C1, E0);
+        sampleEdge(C1, C2, E1);
+        sampleEdge(C2, C3, E2);
+        sampleEdge(C3, C0, E3);
+
+        polyPoints.back() = polyPoints[0];
+
+
+        // -------------------------------------------------------
+        // 6. Safety: ensure vector size == nPoints
+        // -------------------------------------------------------
+
+
+        nPoints = polyPoints.size();
+        boxPointsNormals.resize(nPoints);
+        boolMove.assign(nPoints, true);
+
+        /*if (polyPoints.size() > totalPts)
+        {
+            polyPoints.resize(totalPts);
+        }
+        else if (polyPoints.size() < totalPts)
+        {
+            while (polyPoints.size() < totalPts)
+            {
+                polyPoints.push_back(polyPoints.back());
+            }
+        }*/
+
+        // -------------------------------------------------------
+        // 7. Reset movement flags (if used in your class)
+        // -------------------------------------------------------
+        for (int i = 0; i < polyPoints.size(); i++)
+        {
+            boolMove[i] = true;
+        }
+
+        // -------------------------------------------------------
+        // 8. Recalculate normals (your existing method)
+        // -------------------------------------------------------
+        computeNormals();
+    }
+
+
     void importPrimitive(std::vector<zVector>& polygon)
     {
         nPoints = polygon.size();
@@ -245,6 +361,7 @@ public:
 
     void computeNormals()
     {
+        nPoints = polyPoints.size();
         for (int i = 0; i < nPoints; i++)
         {
             int next = Mod(i + 1, nPoints);
@@ -367,7 +484,7 @@ public:
 
     void expand(spaceGrid* SG)
     {
-        for (int i = 0; i < nPoints; i++)
+        for (int i = 0; i < polyPoints.size(); i++)
         {
             zVector np = boxPointsNormals[i];
 
@@ -429,6 +546,8 @@ public:
         bool expandBeforeNormalCheck = false,
         spaceGrid* SG = NULL)
     {
+        nPoints = polyPoints.size();
+
         if (expandBeforeNormalCheck && SG)
             expand(SG);
 
@@ -632,11 +751,11 @@ public:
         drawLine(zVecToAliceVec(centerOfBox),
             zVecToAliceVec(centerOfBox + directionOfBox * 3));
 
-        for (int i = 0; i < nPoints; i++)
+        for (int i = 0; i < polyPoints.size(); i++)
         {
             glColor3f(1, 0, 0);
             drawLine(zVecToAliceVec(polyPoints[i]),
-                zVecToAliceVec(polyPoints[(i + 1) % nPoints]));
+                zVecToAliceVec(polyPoints[(i + 1) % polyPoints.size()]));
 
             glColor3f(boolMove[i] ? 1 : 0,
                 0,
@@ -653,6 +772,9 @@ public:
             drawLine(zVecToAliceVec(centerPoints[i]),
                 zVecToAliceVec(centerPoints[i] + forces[i]));
         }
+
+
+
     }
 };
 
