@@ -40,6 +40,7 @@
     <ClInclude Include="src\userSrc\parcel_vector.h" />
     <ClInclude Include="src\userSrc\RhinoIO.h" />
     <ClInclude Include="src\userSrc\scalarField.h" />
+    <ClInclude Include="src\userSrc\SSAO.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\userSrc\sketch_3DfieldSlicer.cpp">
