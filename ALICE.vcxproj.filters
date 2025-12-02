@@ -109,5 +109,6 @@
       <Filter>SDF_DCT2_AE</Filter>
     </ClCompile>
     <ClCompile Include="src\userSrc\sketch_RBF_medial.cpp" />
+    <ClCompile Include="src\userSrc\sketch_AO_shader_test.cpp" />
   </ItemGroup>
 </Project>

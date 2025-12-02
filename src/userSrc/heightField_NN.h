@@ -258,6 +258,10 @@ public:
     double loss;
     float sdfLoss = 0.0f;
     float orientationLoss = 0.0f;
+    double o_weight;
+    bool o_flip_dir;
+
+    HeightField2D *correspondingHeightField;
 
     heightfieldNN() {}
 
@@ -529,7 +533,17 @@ public:
         for (auto& pose : poses)
         {
             // Target direction: gradient of polygon SDF
-            zVector targetDir = pose.c - zVector(-50, 50, 0);// gradientAt(pose.c, polygons[0]);// should gradient of corresponding polygon
+            zVector targetDir1, targetDir2;
+            
+
+            zVector gradAt = pose.c;
+            gradAt.x += 2;// gradient explodes at the center of the rectangle;
+
+            targetDir1 = pose.c - zVector(-35, 50, 0);// gradientAt(pose.c, polygons[0]);// should gradient of corresponding polygon
+            targetDir2 = correspondingHeightField->gradientAt(pose.c);// gradientAT_BlendOrientedRectSDF(gradAt, poses, 12 * 0.5 * 0.5, 5.5 * 0.5 * 0.5);
+            targetDir1 = targetDir2 ^ zVector(0, 0, o_flip_dir ? -1: 1); // tangent
+
+            zVector targetDir =  targetDir1* o_weight + targetDir2 * (1 - o_weight); ;
             targetDir.normalize();
 
             // Predicted direction: network output
@@ -568,8 +582,6 @@ public:
 
         return totalLoss;
     }
-
-
 
     float coverageLoss(std::vector<float>& output)
     {

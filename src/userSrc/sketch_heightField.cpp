@@ -547,6 +547,11 @@ void setup()
     S.sliders[0].minVal = -1; // myHeightField.zScale * -1;
     S.sliders[0].maxVal = 1; //  myHeightField.zScale;
 
+    S.addSlider(&nn.o_weight, "o_w");
+
+    B = *new ButtonGroup(Alice::vec(50, 75, 0));
+    B.addButton(&nn.o_flip_dir, "o_flip_dir");
+
     // ----------- TERRAIN  -----------
 
     importedHeightField = *new HeightField2D();
@@ -587,7 +592,7 @@ void update(int value)
 
 void draw()
 {
-    backGround(0.99);
+    backGround(0.85);
     drawGrid(50);
 
 
@@ -628,7 +633,9 @@ void draw()
         drawOrientedCube(pose.c, pose.v);
         
         glColor3f(0, 0, 0);
-        drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + zVector(0, 0, -z)));
+        drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(zVector(pose.c.x, pose.c.y, 0)));
+
+        //drawLine(zVecToAliceVec(zVector(-35,50,0)), zVecToAliceVec(zVector(pose.c.x, pose.c.y, 0)));
     }
     
     //
@@ -773,6 +780,8 @@ void keyPress(unsigned char k, int xm, int ym)
         importedHeightField.rescalePoints(polygon);// scale polygon by same amount as height feild points.
         importedHeightField.trimFieldWithPolygon(polygon);
         importedHeightField.subtract(existingPathsField);
+
+        nn.correspondingHeightField = &importedHeightField;
     }
     
     
@@ -1077,7 +1086,7 @@ void keyPress(unsigned char k, int xm, int ym)
 
         if (fabs(loss - prevLoss) < 1e-2) learningRate *= 1.1;
 
-        learningRate = ofClamp(learningRate, 1e-2, 0.15);
+        learningRate = ofClamp(learningRate, 1e-2, 0.25);
         prevLoss = loss;
         nn.backward(grad, learningRate);
 
