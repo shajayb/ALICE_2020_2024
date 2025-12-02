@@ -8,19 +8,12 @@
 #include <functional>
 #include "main.h" 
 
-// --------------------------------------------------------------------------------
-// CONFIGURATION
-// --------------------------------------------------------------------------------
 #define MAX_SSAO_SAMPLES 1024 
 
 // --------------------------------------------------------------------------------
 // MATH & TYPES
 // --------------------------------------------------------------------------------
-struct vec3f {
-    float x, y, z;
-    vec3f(float _x = 0, float _y = 0, float _z = 0) : x(_x), y(_y), z(_z) {}
-};
-
+struct vec3f { float x, y, z; vec3f(float _x = 0, float _y = 0, float _z = 0) : x(_x), y(_y), z(_z) {} };
 struct mat4f { float m[16]; };
 
 inline mat4f identity4f() { return { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 }; }
@@ -34,9 +27,8 @@ inline mat4f transform4f(vec3f t, vec3f s) {
 
 inline mat4f multiply(mat4f A, mat4f B) {
     mat4f R;
-    for (int c = 0; c < 4; c++)
-        for (int r = 0; r < 4; r++)
-            R.m[c * 4 + r] = A.m[0 * 4 + r] * B.m[c * 4 + 0] + A.m[1 * 4 + r] * B.m[c * 4 + 1] + A.m[2 * 4 + r] * B.m[c * 4 + 2] + A.m[3 * 4 + r] * B.m[c * 4 + 3];
+    for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++)
+        R.m[c * 4 + r] = A.m[0 * 4 + r] * B.m[c * 4 + 0] + A.m[1 * 4 + r] * B.m[c * 4 + 1] + A.m[2 * 4 + r] * B.m[c * 4 + 2] + A.m[3 * 4 + r] * B.m[c * 4 + 3];
     return R;
 }
 
@@ -71,10 +63,7 @@ struct SSAOMesh {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo); glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * 4, indices.data(), GL_STATIC_DRAW);
         glBindVertexArray(0); dirty = false;
     }
-    void draw() {
-        if (dirty || vao == 0) updateGL();
-        glBindVertexArray(vao); glDrawElements(GL_TRIANGLES, (GLsizei)indices.size(), GL_UNSIGNED_INT, 0); glBindVertexArray(0);
-    }
+    void draw() { if (dirty || vao == 0) updateGL(); glBindVertexArray(vao); glDrawElements(GL_TRIANGLES, (GLsizei)indices.size(), GL_UNSIGNED_INT, 0); glBindVertexArray(0); }
 };
 
 // --------------------------------------------------------------------------------
@@ -94,13 +83,8 @@ protected:
 
 class SimpleSSAO {
 private:
-    // --- FBO WRAPPER WITH STATE RESTORATION ---
     struct FBO {
-        GLuint id = 0; int w = 0, h = 0; std::vector<GLuint> texs;
-
-        // Store previous state to restore it later
-        float savedClearColor[4] = { 0,0,0,0 };
-
+        GLuint id = 0; int w = 0, h = 0; std::vector<GLuint> texs; float savedClearColor[4] = { 0,0,0,0 };
         void resize(int _w, int _h, int n) {
             if (w == _w && h == _h) return;
             if (id) { glDeleteFramebuffers(1, &id); glDeleteTextures(texs.size(), texs.data()); texs.clear(); }
@@ -110,10 +94,8 @@ private:
             for (int i = 0; i < n; i++) {
                 GLuint t; glGenTextures(1, &t); glBindTexture(GL_TEXTURE_2D, t);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, 0);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, t, 0);
                 texs.push_back(t); dbs.push_back(GL_COLOR_ATTACHMENT0 + i);
             }
@@ -122,25 +104,8 @@ private:
             glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, r);
             glDrawBuffers(dbs.size(), dbs.data()); glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
-
-        void bind() {
-            // 1. Save current clear color (likely set by user in Sketch)
-            glGetFloatv(GL_COLOR_CLEAR_VALUE, savedClearColor);
-
-            glBindFramebuffer(GL_FRAMEBUFFER, id);
-            glViewport(0, 0, w, h);
-
-            // 2. Set to Black/Transparent for internal processing
-            glClearColor(0, 0, 0, 0);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        }
-
-        void unbind() {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-            // 3. Restore user's clear color
-            glClearColor(savedClearColor[0], savedClearColor[1], savedClearColor[2], savedClearColor[3]);
-        }
+        void bind() { glGetFloatv(GL_COLOR_CLEAR_VALUE, savedClearColor); glBindFramebuffer(GL_FRAMEBUFFER, id); glViewport(0, 0, w, h); glClearColor(0, 0, 0, 0); glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); }
+        void unbind() { glBindFramebuffer(GL_FRAMEBUFFER, 0); glClearColor(savedClearColor[0], savedClearColor[1], savedClearColor[2], savedClearColor[3]); }
     };
 
     struct RenderItem { SSAOMesh* mesh; mat4f modelMatrix; };
@@ -171,34 +136,55 @@ private:
             create("#version 400\n layout(location=0) in vec3 P; void main(){gl_Position=vec4(P,1);}",
                 R"(
                    #version 400
-                   out float Occ; uniform sampler2D gP,gN; uniform vec3 k[1024]; uniform int sampleCount;
-                   uniform mat4 P; uniform float rad,bias,W,H;
+                   out vec4 FragData;
+                   uniform sampler2D gP,gN; uniform vec3 k[1024]; uniform int sampleCount;
+                   uniform mat4 P; uniform float rad,bias,W,H; uniform int mode;
                    float rand(vec2 n){return fract(sin(dot(n,vec2(12.9,78.2)))*43758.5);}
                    void main(){
                        vec2 uv=gl_FragCoord.xy/vec2(W,H); vec4 pD=texture(gP,uv);
-                       if(pD.a<0.5){Occ=1;return;} 
+                       if(pD.a<0.5){ FragData=vec4(1); return; } // BG
                        vec3 p=pD.xyz; vec3 n=normalize(texture(gN,uv).rgb);
                        if(dot(n,vec3(0,0,1))<0) n=-n; 
                        vec3 rv=normalize(vec3(rand(uv*W),rand(uv*H),0));
                        vec3 T=normalize(rv-n*dot(rv,n)); mat3 TBN=mat3(T,cross(n,T),n);
-                       float o=0;
+                       
+                       float occ = 0.0;
+                       float c_red = 0.0; // Occluded
+                       float c_grn = 0.0; // Visible
+                       float c_blu = 0.0; // Sky Hit
+
                        for(int i=0; i<sampleCount; i++){
                            vec3 sP=p+(TBN*k[i])*rad; vec4 off=P*vec4(sP,1); off.xy/=off.w; off.xy=off.xy*0.5+0.5;
-                           if(off.x<0||off.y<0||off.x>1||off.y>1)continue;
-                           float d=texture(gP,off.xy).z; 
-                           if(texture(gP,off.xy).a<0.5) d=-9e9; 
+                           if(off.x<0||off.y<0||off.x>1||off.y>1) continue;
+                           
+                           vec4 sVal = texture(gP,off.xy);
+                           float d = sVal.z; 
+                           bool isSky = sVal.a < 0.5;
+                           if(isSky) { d = -9e9; c_blu += 1.0; } 
                            float rng=smoothstep(0,1,rad/abs(p.z-d));
-                           if(d>=sP.z+bias) o+=rng;
+                           
+                           if(d >= sP.z + bias) { occ += 1.0 * rng; c_red += 1.0 * rng; } 
+                           else if (!isSky) { c_grn += 1.0; }
                        }
-                       Occ=1.0-(o/float(sampleCount));
+
+                       float finalOcc = 1.0 - (occ / float(sampleCount));
+                       
+                       if(mode == 7) {
+                           float total = float(sampleCount);
+                           FragData = vec4(c_red/total, c_grn/total, c_blu/total, 1.0);
+                       } else {
+                           FragData = vec4(finalOcc, finalOcc, finalOcc, 1.0);
+                       }
                    })");
         }
-        void bind(GLuint p, GLuint n, mat4f& proj, float r, float b, int samples, int w, int h) {
+        void bind(GLuint p, GLuint n, mat4f& proj, float r, float b, int samples, int m, int w, int h) {
             glUseProgram(pid); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, p); glUniform1i(glGetUniformLocation(pid, "gP"), 0);
             glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, n); glUniform1i(glGetUniformLocation(pid, "gN"), 1);
-            glUniform3fv(glGetUniformLocation(pid, "k"), MAX_SSAO_SAMPLES, kernel); glUniform1i(glGetUniformLocation(pid, "sampleCount"), samples);
+            glUniform3fv(glGetUniformLocation(pid, "k"), MAX_SSAO_SAMPLES, kernel);
+            glUniform1i(glGetUniformLocation(pid, "sampleCount"), samples);
             glUniformMatrix4fv(glGetUniformLocation(pid, "P"), 1, 0, proj.m);
             glUniform1f(glGetUniformLocation(pid, "rad"), r); glUniform1f(glGetUniformLocation(pid, "bias"), b);
+            glUniform1i(glGetUniformLocation(pid, "mode"), m);
             glUniform1f(glGetUniformLocation(pid, "W"), (float)w); glUniform1f(glGetUniformLocation(pid, "H"), (float)h);
         }
     } ss;
@@ -210,17 +196,25 @@ private:
                 R"(#version 400
             out vec4 C; uniform sampler2D sIn,gP,gN; uniform int mode; uniform bool blur; uniform float W,H;
             void main(){
-                vec2 uv=gl_FragCoord.xy/vec2(W,H); vec4 pD=texture(gP,uv);
-                if(pD.a<0.5) discard;
+                vec4 pD=texture(gP,gl_FragCoord.xy/vec2(W,H));
+                if(pD.a < 0.5) discard; 
+                vec2 uv = gl_FragCoord.xy/vec2(W,H);
+                
+                // MODE 7 PASS THROUGH
+                if (mode == 7) { C = texture(sIn, uv); return; }
 
                 float res=texture(sIn,uv).r;
                 if(blur){
-                    float tot=0, wTot=0; float cD=pD.z; vec3 cN=texture(gN,uv).rgb; vec2 ts=1.0/vec2(W,H);
+                    vec2 ts = 1.0/vec2(W,H);
+                    float tot=0, wTot=0; float cD=pD.z; vec3 cN=texture(gN,uv).rgb; 
                     for(int x=-2;x<=2;x++) for(int y=-2;y<=2;y++){
                         vec2 off=vec2(x,y)*ts; float sOcc=texture(sIn,uv+off).r;
+                        
+                        // BILATERAL WEIGHTS (SMART BLUR)
                         float wD=1.0/(1.0+abs(cD-texture(gP,uv+off).z)*100);
                         float wN=max(0,dot(cN,texture(gN,uv+off).rgb));
                         float w=exp(-(x*x+y*y)/2.0)*wD*wN;
+                        
                         tot+=sOcc*w; wTot+=w;
                     }
                     if(wTot>0) res=tot/wTot;
@@ -285,12 +279,10 @@ public:
         if (samples < 1) samples = 1;
 
         ssaoBuffer.bind(); glDisable(GL_DEPTH_TEST);
-        ss.bind(gBuffer.texs[0], gBuffer.texs[1], P, radius, bias, samples, w, h);
+        ss.bind(gBuffer.texs[0], gBuffer.texs[1], P, radius, bias, samples, mode, w, h);
         quad.draw(); ssaoBuffer.unbind();
 
         glDisable(GL_BLEND);
-        // Note: No glClear() needed here, we discard BG pixels.
-
         bs.bind(ssaoBuffer.texs[0], gBuffer.texs[0], gBuffer.texs[1], mode, blur, w, h);
         quad.draw();
 
