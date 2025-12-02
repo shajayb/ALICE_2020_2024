@@ -57,8 +57,6 @@ struct SSAOMesh {
     std::vector<float> vertices;
     std::vector<float> normals;
     std::vector<unsigned int> indices;
-    vec3f pos = { 0,0,0 };
-    vec3f scale = { 1,1,1 };
     GLuint vao = 0; GLuint vbo[2] = { 0,0 }; GLuint ebo = 0; bool dirty = true;
 
     void updateGL() {
@@ -96,8 +94,13 @@ protected:
 
 class SimpleSSAO {
 private:
+    // --- FBO WRAPPER WITH STATE RESTORATION ---
     struct FBO {
         GLuint id = 0; int w = 0, h = 0; std::vector<GLuint> texs;
+
+        // Store previous state to restore it later
+        float savedClearColor[4] = { 0,0,0,0 };
+
         void resize(int _w, int _h, int n) {
             if (w == _w && h == _h) return;
             if (id) { glDeleteFramebuffers(1, &id); glDeleteTextures(texs.size(), texs.data()); texs.clear(); }
@@ -119,14 +122,30 @@ private:
             glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, r);
             glDrawBuffers(dbs.size(), dbs.data()); glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
-        void bind() { glBindFramebuffer(GL_FRAMEBUFFER, id); glViewport(0, 0, w, h); glClearColor(0, 0, 0, 0); glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); }
-        void unbind() { glBindFramebuffer(GL_FRAMEBUFFER, 0); }
+
+        void bind() {
+            // 1. Save current clear color (likely set by user in Sketch)
+            glGetFloatv(GL_COLOR_CLEAR_VALUE, savedClearColor);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, id);
+            glViewport(0, 0, w, h);
+
+            // 2. Set to Black/Transparent for internal processing
+            glClearColor(0, 0, 0, 0);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        }
+
+        void unbind() {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            // 3. Restore user's clear color
+            glClearColor(savedClearColor[0], savedClearColor[1], savedClearColor[2], savedClearColor[3]);
+        }
     };
 
     struct RenderItem { SSAOMesh* mesh; mat4f modelMatrix; };
     FBO gBuffer; FBO ssaoBuffer; std::vector<RenderItem> renderQueue;
 
-    // --- GEOMETRY SHADER ---
     class GShader : public _InternalShader {
     public:
         void init() {
@@ -192,7 +211,8 @@ private:
             out vec4 C; uniform sampler2D sIn,gP,gN; uniform int mode; uniform bool blur; uniform float W,H;
             void main(){
                 vec2 uv=gl_FragCoord.xy/vec2(W,H); vec4 pD=texture(gP,uv);
-                if(pD.a<0.5){C=vec4(0.9);return;}
+                if(pD.a<0.5) discard;
+
                 float res=texture(sIn,uv).r;
                 if(blur){
                     float tot=0, wTot=0; float cD=pD.z; vec3 cN=texture(gN,uv).rgb; vec2 ts=1.0/vec2(W,H);
@@ -240,24 +260,17 @@ public:
     void addObject(SSAOMesh* mesh, mat4f modelMatrix) { renderQueue.push_back({ mesh, modelMatrix }); }
     void addObject(SSAOMesh* mesh, vec3f pos) { renderQueue.push_back({ mesh, transform4f(pos, {1,1,1}) }); }
     void clearQueue() { renderQueue.clear(); }
+    int getObjectCount() const { return (int)renderQueue.size(); }
 
     void draw() {
-        // 1. Context & Projection
         int w = glutGet(GLUT_WINDOW_WIDTH);
         int h = glutGet(GLUT_WINDOW_HEIGHT);
         mat4f P = perspective(60.0f, (float)w / h, 1.0f, 1000.0f);
+        float vRaw[16]; glGetFloatv(GL_MODELVIEW_MATRIX, vRaw);
+        mat4f V; memcpy(V.m, vRaw, 16 * 4);
 
-        // 2. View Matrix (Capture from main.h Framework)
-        float vRaw[16];
-        glGetFloatv(GL_MODELVIEW_MATRIX, vRaw);
-        mat4f V;
-        memcpy(V.m, vRaw, 16 * 4);
-
-        // 3. Geometry Pass
         gBuffer.resize(w, h, 2); ssaoBuffer.resize(w, h, 1);
-        glDisable(GL_BLEND);
-        gBuffer.bind();
-        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND); gBuffer.bind(); glEnable(GL_DEPTH_TEST);
 
         for (const auto& item : renderQueue) {
             if (!item.mesh) continue;
@@ -266,20 +279,18 @@ public:
             gs.bind(MVP, MV);
             item.mesh->draw();
         }
-
         gBuffer.unbind();
 
-        // 4. SSAO Pass
         if (samples > MAX_SSAO_SAMPLES) samples = MAX_SSAO_SAMPLES;
         if (samples < 1) samples = 1;
 
         ssaoBuffer.bind(); glDisable(GL_DEPTH_TEST);
         ss.bind(gBuffer.texs[0], gBuffer.texs[1], P, radius, bias, samples, w, h);
-        quad.draw();
-        ssaoBuffer.unbind();
+        quad.draw(); ssaoBuffer.unbind();
 
-        // 5. Lighting Pass
-        glDisable(GL_BLEND); glClearColor(1, 1, 1, 1); glClear(GL_COLOR_BUFFER_BIT);
+        glDisable(GL_BLEND);
+        // Note: No glClear() needed here, we discard BG pixels.
+
         bs.bind(ssaoBuffer.texs[0], gBuffer.texs[0], gBuffer.texs[1], mode, blur, w, h);
         quad.draw();
 
