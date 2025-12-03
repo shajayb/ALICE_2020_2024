@@ -228,6 +228,16 @@ inline zVector gradientAT_BlendOrientedRectSDF
     return finalGrad;
 }
 
+void drawText(string& str, float x = 50, float y = 100)
+{
+    unsigned int i;
+    glRasterPos2f(x, y);
+
+
+    for (i = 0; i < str.length(); i++)
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_10, str[i]);
+}
+
 
 zVector centroid(vector<zVector> &poly)
 {

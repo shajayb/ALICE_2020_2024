@@ -15,6 +15,35 @@
 
 using namespace zSpace;
 
+// comment out if previously defined
+Alice::vec zVecToAliceVec(zVector& in)
+{
+    return Alice::vec(in.x, in.y, in.z);
+}
+
+// Helper to check polygon containment (Odd-even rule)
+bool pointInsidePolygon(zVector& pt, std::vector<zVector>& poly)
+{
+    int crossings = 0;
+    int N = poly.size();
+
+    for (int i = 0; i < N; ++i)
+    {
+        zVector& a = poly[i];
+        zVector& b = poly[(i + 1) % N];
+
+        if (((a.y > pt.y) != (b.y > pt.y)))
+        {
+            float t = (pt.y - a.y) / (b.y - a.y);
+            float xCross = a.x + t * (b.x - a.x);
+
+            if (pt.x < xCross)
+                crossings++;
+        }
+    }
+
+    return (crossings % 2 == 1);
+}
 //these two functiosn must be turned on for sketch_circleSDF_fitter.cpp
 inline zVector zMax( zVector& a,  zVector& b)
 {

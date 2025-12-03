@@ -42,48 +42,6 @@ inline mat4f alignToDir(vec3f dir) {
     return R;
 }
 
-inline mat4f computeBoxTransform
-(
-    vec3f pos,
-    vec3f dir,
-    float len = 6.0f,
-    float wid = 2.75f,
-    float ht = 1.5f,
-    float globalScale = 1.0f
-)
-{
-    // 1. Position & direction
-    //vec3f pos(pose.c.x, pose.c.y, pose.c.z);
-    //vec3f dir(pose.v.x, pose.v.y, pose.v.z);
-
-    // 2. Build rotation matrix that aligns Z-axis to dir
-    mat4f M = alignToDir(dir);
-
-    // 3. Scale basis vectors
-    // X basis (m[0], m[1], m[2])
-    M.m[0] *= len;
-    M.m[1] *= len;
-    M.m[2] *= len;
-
-    // Y basis (m[4], m[5], m[6])
-    M.m[4] *= wid;
-    M.m[5] *= wid;
-    M.m[6] *= wid;
-
-    // Z basis (m[8], m[9], m[10])
-    M.m[8] *= ht;
-    M.m[9] *= ht;
-    M.m[10] *= ht;
-
-    // 4. Translation
-    M.m[12] = pos.x * globalScale;
-    M.m[13] = pos.y * globalScale;
-    M.m[14] = pos.z * globalScale;
-
-    return M;
-}
-
-
 inline mat4f multiply(mat4f A, mat4f B) {
     mat4f R;
     for (int c = 0; c < 4; c++)
@@ -161,20 +119,29 @@ private:
         void unbind() { glBindFramebuffer(GL_FRAMEBUFFER, 0); glClearColor(savedClearColor[0], savedClearColor[1], savedClearColor[2], savedClearColor[3]); }
     };
 
-    struct RenderItem { SSAOMesh* mesh; mat4f modelMatrix; };
+    struct RenderItem { SSAOMesh* mesh; mat4f modelMatrix; vec3f color; };
     FBO gBuffer; FBO ssaoBuffer; std::vector<RenderItem> renderQueue;
 
+    // --- G-BUFFER SHADER (Pos, Norm, Color) ---
     class GShader : public _InternalShader {
     public:
         void init() {
             create(
                 "#version 400\n layout(location=0) in vec3 P; layout(location=1) in vec3 N; uniform mat4 MVP,MV; out vec3 vP,vN; void main(){ vec4 p=MV*vec4(P,1); vP=p.xyz; vN=normalize(transpose(inverse(mat3(MV)))*N); gl_Position=MVP*vec4(P,1); }",
-                "#version 400\n layout(location=0) out vec4 gP; layout(location=1) out vec4 gN; in vec3 vP,vN; void main(){ gP=vec4(vP,1); gN=vec4(normalize(vN),1); }"
+                // Output 0: Pos, 1: Norm, 2: Color
+                "#version 400\n layout(location=0) out vec4 gP; layout(location=1) out vec4 gN; layout(location=2) out vec4 gC; \
+                 in vec3 vP,vN; uniform vec3 objColor; void main(){ gP=vec4(vP,1); gN=vec4(normalize(vN),1); gC=vec4(objColor,1); }"
             );
         }
-        void bind(mat4f& MVP, mat4f& MV) { glUseProgram(pid); glUniformMatrix4fv(glGetUniformLocation(pid, "MVP"), 1, 0, MVP.m); glUniformMatrix4fv(glGetUniformLocation(pid, "MV"), 1, 0, MV.m); }
+        void bind(mat4f& MVP, mat4f& MV, vec3f col) {
+            glUseProgram(pid);
+            glUniformMatrix4fv(glGetUniformLocation(pid, "MVP"), 1, 0, MVP.m);
+            glUniformMatrix4fv(glGetUniformLocation(pid, "MV"), 1, 0, MV.m);
+            glUniform3f(glGetUniformLocation(pid, "objColor"), col.x, col.y, col.z);
+        }
     } gs;
 
+    // --- SSAO SHADER ---
     class SShader : public _InternalShader {
     public:
         float kernel[MAX_SSAO_SAMPLES * 3];
@@ -234,7 +201,7 @@ private:
         void init() {
             create("#version 400\n layout(location=0) in vec3 P; void main(){gl_Position=vec4(P,1);}",
                 R"(#version 400
-            out vec4 C; uniform sampler2D sIn,gP,gN; uniform int mode; uniform bool blur; uniform float W,H;
+            out vec4 C; uniform sampler2D sIn,gP,gN,gAlbedo; uniform int mode; uniform bool blur; uniform float W,H;
             void main(){
                 vec4 pD=texture(gP,gl_FragCoord.xy/vec2(W,H));
                 if(pD.a < 0.5) discard; 
@@ -253,7 +220,13 @@ private:
                     }
                     if(wTot>0) res=tot/wTot;
                 }
-                res=pow(res,3.0);
+                
+                // Pronounced AO Curve
+                res = pow(res, 4.0); // Was 3.0
+                
+                // --- READ ALBEDO ---
+                vec3 albedo = texture(gAlbedo, uv).rgb;
+
                 if(mode==1) C=vec4(vec3(texture(sIn,uv).r),1);
                 else if(mode==2) C=vec4(vec3(res),1);
                 else if(mode==3) C=vec4(texture(gN,uv).rgb*0.5+0.5,1);
@@ -261,14 +234,22 @@ private:
                 else if(mode==5) C=vec4(abs(pD.xyz)/50,1);
                 else { 
                     vec3 L=normalize(vec3(0.5,0.5,1)); float d=max(dot(texture(gN,uv).rgb,L),0);
-                    C=vec4(vec3(0.3*res + 0.7*d),1); 
+                    
+                    // Stronger Ambient Occlusion Effect
+                    vec3 ambient = albedo * 0.4; 
+                    vec3 diffuse = albedo * 0.6 * d;
+
+                    // Apply AO to both ambient and diffuse for a 'dirtier', punchier look
+                    C = vec4( (ambient + diffuse) * res, 1.0); 
                 }
             })");
         }
-        void bind(GLuint s, GLuint p, GLuint n, int m, bool b, int w, int h) {
-            glUseProgram(pid); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, s); glUniform1i(glGetUniformLocation(pid, "sIn"), 0);
+        void bind(GLuint s, GLuint p, GLuint n, GLuint c, int m, bool b, int w, int h) {
+            glUseProgram(pid);
+            glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, s); glUniform1i(glGetUniformLocation(pid, "sIn"), 0);
             glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, p); glUniform1i(glGetUniformLocation(pid, "gP"), 1);
             glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, n); glUniform1i(glGetUniformLocation(pid, "gN"), 2);
+            glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, c); glUniform1i(glGetUniformLocation(pid, "gAlbedo"), 3);
             glUniform1i(glGetUniformLocation(pid, "mode"), m); glUniform1i(glGetUniformLocation(pid, "blur"), b);
             glUniform1f(glGetUniformLocation(pid, "W"), (float)w); glUniform1f(glGetUniformLocation(pid, "H"), (float)h);
         }
@@ -278,37 +259,32 @@ private:
 
 public:
     float bias = 0.1f;
-    double radius = 5.0f;
+    float radius = 5.0f;
     int samples = 32;
     int mode = 0;
     bool blur = true;
 
     void setup() { gs.init(); ss.init(); bs.init(); quad.init(); }
 
-    void addObject(SSAOMesh* mesh, mat4f modelMatrix) { renderQueue.push_back({ mesh, modelMatrix }); }
-    void addObject(SSAOMesh* mesh, vec3f pos) { renderQueue.push_back({ mesh, transform4f(pos, {1,1,1}) }); }
+    void addObject(SSAOMesh* mesh, mat4f modelMatrix, vec3f color = { 1,1,1 }) { renderQueue.push_back({ mesh, modelMatrix, color }); }
+    void addObject(SSAOMesh* mesh, vec3f pos, vec3f color = { 1,1,1 }) { renderQueue.push_back({ mesh, transform4f(pos, {1,1,1}), color }); }
     void clearQueue() { renderQueue.clear(); }
     int getObjectCount() const { return (int)renderQueue.size(); }
 
     void draw() {
         int w = glutGet(GLUT_WINDOW_WIDTH); int h = glutGet(GLUT_WINDOW_HEIGHT);
+        float pRaw[16]; glGetFloatv(GL_PROJECTION_MATRIX, pRaw); mat4f P; memcpy(P.m, pRaw, 16 * 4);
+        float vRaw[16]; glGetFloatv(GL_MODELVIEW_MATRIX, vRaw); mat4f V; memcpy(V.m, vRaw, 16 * 4);
 
-        // --- FIX: Capture Projection from Framework ---
-        float pRaw[16];
-        glGetFloatv(GL_PROJECTION_MATRIX, pRaw);
-        mat4f P; memcpy(P.m, pRaw, 16 * 4);
-
-        float vRaw[16]; glGetFloatv(GL_MODELVIEW_MATRIX, vRaw);
-        mat4f V; memcpy(V.m, vRaw, 16 * 4);
-
-        gBuffer.resize(w, h, 2); ssaoBuffer.resize(w, h, 1);
+        // Resize for 3 Attachments
+        gBuffer.resize(w, h, 3); ssaoBuffer.resize(w, h, 1);
         glDisable(GL_BLEND); gBuffer.bind(); glEnable(GL_DEPTH_TEST);
 
         for (const auto& item : renderQueue) {
             if (!item.mesh) continue;
             mat4f MV = multiply(V, item.modelMatrix);
             mat4f MVP = multiply(P, MV);
-            gs.bind(MVP, MV);
+            gs.bind(MVP, MV, item.color);
             item.mesh->draw();
         }
         gBuffer.unbind();
@@ -321,7 +297,8 @@ public:
         quad.draw(); ssaoBuffer.unbind();
 
         glDisable(GL_BLEND);
-        bs.bind(ssaoBuffer.texs[0], gBuffer.texs[0], gBuffer.texs[1], mode, blur, w, h);
+        // Bind Albedo Texture (Index 2)
+        bs.bind(ssaoBuffer.texs[0], gBuffer.texs[0], gBuffer.texs[1], gBuffer.texs[2], mode, blur, w, h);
         quad.draw();
 
         glUseProgram(0); glEnable(GL_DEPTH_TEST); glEnable(GL_BLEND);
