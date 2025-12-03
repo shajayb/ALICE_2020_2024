@@ -750,8 +750,8 @@ void setup()
 
     // ----------- tmp 
 
-    keyPress('2', 0, 0);
-    for (int i = 0; i < 10; i++)keyPress('=', 0, 0);
+    //keyPress('2', 0, 0);
+    //for (int i = 0; i < 10; i++)keyPress('=', 0, 0);
 
     //
 
