@@ -42,6 +42,48 @@ inline mat4f alignToDir(vec3f dir) {
     return R;
 }
 
+inline mat4f computeBoxTransform
+(
+    vec3f pos,
+    vec3f dir,
+    float len = 6.0f,
+    float wid = 2.75f,
+    float ht = 1.5f,
+    float globalScale = 1.0f
+)
+{
+    // 1. Position & direction
+    //vec3f pos(pose.c.x, pose.c.y, pose.c.z);
+    //vec3f dir(pose.v.x, pose.v.y, pose.v.z);
+
+    // 2. Build rotation matrix that aligns Z-axis to dir
+    mat4f M = alignToDir(dir);
+
+    // 3. Scale basis vectors
+    // X basis (m[0], m[1], m[2])
+    M.m[0] *= len;
+    M.m[1] *= len;
+    M.m[2] *= len;
+
+    // Y basis (m[4], m[5], m[6])
+    M.m[4] *= wid;
+    M.m[5] *= wid;
+    M.m[6] *= wid;
+
+    // Z basis (m[8], m[9], m[10])
+    M.m[8] *= ht;
+    M.m[9] *= ht;
+    M.m[10] *= ht;
+
+    // 4. Translation
+    M.m[12] = pos.x * globalScale;
+    M.m[13] = pos.y * globalScale;
+    M.m[14] = pos.z * globalScale;
+
+    return M;
+}
+
+
 inline mat4f multiply(mat4f A, mat4f B) {
     mat4f R;
     for (int c = 0; c < 4; c++)
@@ -236,7 +278,7 @@ private:
 
 public:
     float bias = 0.1f;
-    float radius = 5.0f;
+    double radius = 5.0f;
     int samples = 32;
     int mode = 0;
     bool blur = true;

@@ -705,8 +705,10 @@ void setup()
     S.sliders[0].maxVal = 1; //  myHeightField.zScale;
 
     S.addSlider(&nn.o_weight, "o_w");
+    S.addSlider( &ssao.radius, "sao_r");
+    S.sliders[2].maxVal = 100; //  myHeightField.zScale;
 
-    B = *new ButtonGroup(Alice::vec(50, 75, 0));
+    B = *new ButtonGroup(Alice::vec(50, 100, 0));
     B.addButton(&nn.o_flip_dir, "o_flip_dir");
 
     // ----------- TERRAIN  -----------
@@ -766,11 +768,30 @@ void draw()
 {
     backGround(0.99);
 
+    // ----------------------- SSAO 
 
+    ssao.clearQueue();
+        
+        //cabins
+        for (auto pose : nn.poses)
+        {
+            float z = importedHeightField.getFieldValue(pose.c);
+            pose.c.z = importedHeightField.mapIsoToActualHeight(z);
 
-   
+            mat4f M = computeBoxTransform(vec3f{ pose.c.x,pose.c.y,pose.c.z }, vec3f{ pose.v.x,pose.v.y,pose.v.z });
+
+            ssao.addObject(&orientedCubeMesh, M);
+        }
+
+        //terrain mesh
+        ssao.addObject(&rhinoTerrainMesh, identity4f());
+
+    ssao.draw();
+
+    //---------------------- -
 
     drawGrid(50);
+
     // ----------------------- imported heightfield and sample points 
 
     importedHeightField.drawSamplePoints();
@@ -799,19 +820,7 @@ void draw()
     nn.draw_output_and_loss();
     //nn.drawCoverageSamples();
 
-    for (auto pose : nn.poses)
-    {
-        float z = importedHeightField.getFieldValue(pose.c);
-        pose.c.z = importedHeightField.mapIsoToActualHeight(z);
 
-        
-       // drawOrientedCube(pose.c, pose.v);
-        
-        glColor3f(0, 0, 0);
-        drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(zVector(pose.c.x, pose.c.y, 0)));
-
-        //drawLine(zVecToAliceVec(zVector(-35,50,0)), zVecToAliceVec(zVector(pose.c.x, pose.c.y, 0)));
-    }
     
 
     //
@@ -850,57 +859,11 @@ void draw()
         
         existingPathsField.rescaleFieldToRange(-1, 1);
         //existingPathsField.drawFieldPoints();
-        existingPathsField.drawIsocontours(threshold);
-    }
-
-    //
-
-    ssao.clearQueue();
-
-    for (auto pose : nn.poses)
-    {
-        float z = importedHeightField.getFieldValue(pose.c);
-        pose.c.z = importedHeightField.mapIsoToActualHeight(z);
-
-        vec3f pos(pose.c.x, pose.c.y, pose.c.z);
-        vec3f dir(pose.v.x, pose.v.y, pose.v.z);
-
-        // Dimensions
-        float len = 6.0f;
-        float wid = 2.75f;
-        float ht = 1.5f;
-
-        // IMPORTANT: Keep this at 1.0f unless you know for a fact 
-        // your View has a global scale applied. Based on previous turns, 
-        // you likely need this to match the wireframe's "Spread".
-        float globalScale = 1.0f;
-
-        // 1. Rotation (Use the new Axis-Angle logic)
-        mat4f M = alignToDir(dir);
-
-        // 2. Scale (Multiply the basis vectors/columns by dimensions)
-        M.m[0] *= len;
-        M.m[1] *= len;
-        M.m[2] *= len;
-
-        M.m[4] *= wid;
-        M.m[5] *= wid;
-        M.m[6] *= wid;
-
-        M.m[8] *= ht;
-        M.m[9] *= ht;
-        M.m[10] *= ht;
-
-        // 3. Translation
-        M.m[12] = pos.x * globalScale;
-        M.m[13] = pos.y * globalScale;
-        M.m[14] = pos.z * globalScale;
-
-        ssao.addObject(&orientedCubeMesh, M);
+       // existingPathsField.drawIsocontours(threshold);
     }
 
 
-    ssao.draw();
+    
 
 
 
@@ -912,7 +875,13 @@ int n = 0;
 
 void keyPress(unsigned char k, int xm, int ym)
 {
+    // import from SSAO
     
+    if (k == 'd') ssao.mode = (ssao.mode + 1) % 8;
+
+    // import from Rhino
+
+
     if (k == '2')
     {
         RhinoIO in_RIO;
@@ -962,6 +931,7 @@ void keyPress(unsigned char k, int xm, int ym)
      
 
         // ---------- import existing paths, and BND polygon
+
         existing_paths.clear();
         vector <zVector> poly;
 
@@ -987,6 +957,7 @@ void keyPress(unsigned char k, int xm, int ym)
 
         }
 
+        // scale existing paths by factor same as importHeightField.
         for (auto& path : existing_paths)
             for (auto& p : path)p *= importedHeightField.scale;
 
@@ -1013,130 +984,36 @@ void keyPress(unsigned char k, int xm, int ym)
         for (const auto& obj : meshes)
         {
 
-            const ON_Mesh* msh = ON_Mesh::Cast(obj.geometry);
-
-            if (msh && obj.name == L"TERRAIN") // all curves with name Attr == EXIST_PATH
+            for (const auto& obj : meshes)
             {
-                //msh->
-                
-                convert_ONMesh_to_tri_arrays(msh, rhinoTerrainMesh.vertices, rhinoTerrainMesh.normals, rhinoTerrainMesh.indices);
-
-               
-
-                if (rhinoTerrainMesh.vertices.size() == rhinoTerrainMesh.normals.size() && rhinoTerrainMesh.indices.size() > 3)
+                const ON_Mesh* msh = ON_Mesh::Cast(obj.geometry);
+                if (msh && obj.name == L"TERRAIN")
                 {
-                    printf("Mesh -> V:%zu  N:%zu  I:%zu\n",
-                        rhinoTerrainMesh.vertices.size(),
-                        rhinoTerrainMesh.normals.size(),
-                        rhinoTerrainMesh.indices.size());
+                    std::cout << "[App] Found Terrain Mesh! Converting..." << std::endl;
+                    convert_ONMesh_to_tri_arrays
+                    (
+                        msh,
+                        rhinoTerrainMesh.vertices,
+                        rhinoTerrainMesh.normals,
+                        rhinoTerrainMesh.indices
+                    );
+                    rhinoTerrainMesh.dirty = true;
 
-                    ssao.addObject(&rhinoTerrainMesh, vec3f{ 0,0,0 });
+                    // scale by factor same as importedHeightField
+
+                    for( auto &x : rhinoTerrainMesh.vertices) x *= importedHeightField.scale;
+
+                    // Add to SSAO Queue (Identity Matrix assumed)
+                    ssao.addObject(&rhinoTerrainMesh, identity4f());
+
+                    break;
                 }
             }
         }
     }
     
     
-    if (k == 'j')
-    {
-        siteHeightField.clearField();
-
-        vector<zVector> plot_centers;
-        for (auto& parcel : plots)
-            for (auto& poly : nn.polygons)
-                    if (pointInsidePolygon(parcel.centerOfBox, poly)) plot_centers.push_back(parcel.centerOfBox);
-
-        siteHeightField.addVoronoi(plot_centers);
-        siteHeightField.trimFieldWithPolygons(nn.polygons);
-
-       // siteHeightField.rescaleFieldToRange();
-    }
-
-    if (k == 'h')
-    {
-        // ----------------- high line contour extraction
-        
-        // contour segments and ordered set
-        /*zRangeMin += 1.0;
-        if (zRangeMin >= importedHeightField.zMax)zRangeMin = importedHeightField.zMin;
-
-        float iso = ofMap( zRangeMin, importedHeightField.MLS_zMin, importedHeightField.MLS_zMax, 0, 1);*/
-        importedHeightField_original.computeIsocontours(threshold);
-        std::vector<std::vector<zVector>> contours = importedHeightField_original.getOrderedContours();
-
-        // extract largest contiguous set
-        vector<zVector> poly;
-        size_t maxPts = 0;
-
-        for (int i = 0; i < contours.size(); i++)
-        {
-
-            if (contours[i].size() > maxPts)
-            {
-                maxPts = contours[i].size();
-                poly = contours[i];
-            }
-        }
-
-        cout << maxPts << " -- " << poly.size() << endl;
-
-        // resample contour, trim with polygon
-        
-        float scale = importedHeightField.scale;
-
-        poly = importedHeightField.resamplePolyline(poly, 2.5 * (1.0f / scale));
-        for (int n = 0; n < 5; n++)importedHeightField_original.smoothPath(poly);
-
-        importedHeightField_original.lastShortestPath.clear();
-        for (auto& p : poly)
-            for (auto& poly : nn.polygons)
-                if (pointInsidePolygon(p, poly)) importedHeightField_original.lastShortestPath.push_back(p);
-
-        poly = importedHeightField_original.lastShortestPath;
-
-       // ---------------------------- shortest paths to parcel from contour high line ;
-       // cost field
-        siteHeightField.clearField();
-        for (int i = 0; i < SF_RES; i++)
-            for (int j = 0; j < SF_RES; j++)
-                siteHeightField.field[i][j] = importedHeightField_original.field[i][j];
-        
-        siteHeightField.trimFieldWithPolygons(nn.polygons);
-
-        // cost field scaling
-
-        vector<vector<zVector>> polys;
-        for (auto& parcel : plots)
-            for (auto& poly : nn.polygons)
-                if (pointInsidePolygon(parcel.centerOfBox, poly)) polys.push_back(parcel.polyPoints);
-
-        siteHeightField.scale_scalar_within_polygons(polys);
-
-
-        // -- node sets N (poly) & M (poses);
-
-        
-        std::vector<Pose2D> poses;
-        nn.extractPoses(output, poses, true);
-        
-        // -- paths from M nodes to N nodes
-        // poly x poses[i].c
-
-        // -- path storage
-        shortestPaths.clear();
-        vector<zVector> sources, sinks;
-        //for (int n = 0; n < poly.size(); n++)sources.push_back(poly[n]);
-        sources.push_back(poly[0]);
-        sources.push_back( poly[poly.size() - 1] ); 
-        shortestPaths.clear();
-
-        for (int m = 0; m < poses.size(); m++)sinks.push_back(poses[m].c);
-
-        if(nn.polygons.size() >0 )
-        shortest_paths_N_x_M(sources, sinks, siteHeightField, shortestPaths, nn.polygons[0]);
-
-
-    }
+   
 
     if (k == 'g') // ----------paths : N nodes to N nodes (poses)
     {
@@ -1188,13 +1065,7 @@ void keyPress(unsigned char k, int xm, int ym)
 
     if (k == 'p') // populate
     {
-        polygon.clear();
-        loadPolygonFromFile(string("data/cabin.txt"), polygon);
 
-        for (auto& pt : polygon)
-        {
-            pt *= importedHeightField.scale;
-        }
 
         ///
         std::vector<Pose2D> poses;
@@ -1214,10 +1085,8 @@ void keyPress(unsigned char k, int xm, int ym)
             zVector dir = pose.v;
             dir.normalize();
             dir.z = 0;
-           /* dir = dir ^ zVector(0, 0, 1);
-            dir.normalize();*/
-            plot.directionOfBox = dir;
 
+            plot.directionOfBox = dir;
 
             //plot.setDefaultBox();
             plot.setDefaultBox_OrientedRectangle(12 * 0.5, 5.5 * 0.5, dir);
@@ -1264,8 +1133,6 @@ void keyPress(unsigned char k, int xm, int ym)
         SG.PartitionParticlesToBuckets();
 
     }
-
-
 
 
     // --------------- SITE DEFINITION AND NUERAL NET COVERAGE POLYGON  ---------------
@@ -1368,14 +1235,6 @@ void keyPress(unsigned char k, int xm, int ym)
     }
 
     // --------------- HEIGHT FIELD IMPORT  ---------------
-
-
-    if (k == 's')
-    {
-        importedHeightField.smoothDiffuseIsotropic(0.15, 1, true);
-        //myHeightField1.smoothDiffuseAnisotropic(0.2, 1, 0.1, ScalarField2D::PMVariant::Exp, ScalarField2D::DiffuseDir::AlongIsophote, 2, true);
-    }
-
 
     
 

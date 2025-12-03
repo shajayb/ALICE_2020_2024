@@ -710,40 +710,35 @@ public:
 
     void draw_output_and_loss()
     {
-        //poses.clear();
-        
-        //extractPoses(output, poses, true);
-       
-        //
 
 
         glPointSize(5);
         glColor3f(0, 0, 0);
-        for (auto& pose : poses)
-        {
-            drawPoint(zVecToAliceVec(pose.c));
-            // drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + pose.v * 5.0));
+            //for (auto& pose : poses)
+            //{
+            //    drawPoint(zVecToAliceVec(pose.c));
+            //    // drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + pose.v * 5.0));
 
-            // ---------- predicted dir in red
-            zVector dir = pose.v;
-            dir.normalize();
-            glColor3f(0, 0, 0);
-            drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + dir * 2.0));
-            drawCircle(zVecToAliceVec(pose.c), radius, 32);
+            //    // ---------- predicted dir in red
+            //    zVector dir = pose.v;
+            //    dir.normalize();
+            //    glColor3f(0, 0, 0);
+            //    drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + dir * 2.0));
+            //    drawCircle(zVecToAliceVec(pose.c), radius, 32);
 
-            // ---------- gradient in red
-            glColor3f(1, 0, 0);
-                dir = gradientAT_BlendOrientedRectSDF(pose.c + zVector(1,0,0), poses);
-                dir.normalize();
-            
-            drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + dir * 2.0));
+            //    // ---------- gradient in red
+            //    glColor3f(1, 0, 0);
+            //        dir = gradientAT_BlendOrientedRectSDF(pose.c + zVector(1,0,0), poses);
+            //        dir.normalize();
+            //
+            //    drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + dir * 2.0));
 
-            // ---------- view Dir in blue
-            dir = zVector(-50, 50, 0);// target Dir << check in coverage loss
-            dir.normalize();
-            glColor3f(0, 0, 1);
-            drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + dir * 2.0));
-        }
+            //    // ---------- view Dir in blue
+            //    dir = zVector(-50, 50, 0);// target Dir << check in coverage loss
+            //    dir.normalize();
+            //    glColor3f(0, 0, 1);
+            //    drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(pose.c + dir * 2.0));
+            //}
         glPointSize(1);
 
         //
