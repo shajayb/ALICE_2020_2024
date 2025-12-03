@@ -12,13 +12,78 @@
 #include <sstream>
 #include <map>
 
-// - ----------- ZSPACE -----------
+// - ----------- OPEN NURBS  -----------
+
 #include "RhinoIO.h"
+
+// - ----------- ZSPACE -----------
+
 #include <headers/zApp/include/zObjects.h>
 #include <headers/zApp/include/zFnSets.h>
 #include <headers/zApp/include/zViewer.h>
 
 using namespace zSpace;
+
+// - ----------- SHADER -----------
+#include "SSAO.h"
+
+SSAOMesh orientedCubeMesh;
+// Create a standard 1x1x1 cube centered at 0,0,0
+// No Rotation baked in. No Dimensions baked in.
+void ssao_createUnitCube(SSAOMesh& m)
+{
+    m.vertices.clear(); m.normals.clear(); m.indices.clear();
+
+    float x = 0.5f, y = 0.5f, z = 0.5f;
+
+    // Local Vertices (Axis Aligned Unit Cube)
+    std::vector<vec3f> v =
+    {
+        {-x,-y,-z},{ x,-y,-z},{ x, y,-z},{-x, y,-z}, // Back
+        {-x,-y, z},{ x,-y, z},{ x, y, z},{-x, y, z}, // Front
+        {-x,-y,-z},{-x,-y, z},{-x, y, z},{-x, y,-z}, // Left
+        { x,-y,-z},{ x,-y, z},{ x, y, z},{ x, y,-z}, // Right
+        {-x, y,-z},{ x, y,-z},{ x, y, z},{-x, y, z}, // Top
+        {-x,-y,-z},{ x,-y,-z},{ x,-y, z},{-x,-y, z}  // Bottom
+    };
+
+    // Local Normals
+    std::vector<vec3f> n =
+    {
+        { 0, 0,-1},{ 0, 0,-1},{ 0, 0,-1},{ 0, 0,-1},
+        { 0, 0, 1},{ 0, 0, 1},{ 0, 0, 1},{ 0, 0, 1},
+        {-1, 0, 0},{-1, 0, 0},{-1, 0, 0},{-1, 0, 0},
+        { 1, 0, 0},{ 1, 0, 0},{ 1, 0, 0},{ 1, 0, 0},
+        { 0, 1, 0},{ 0, 1, 0},{ 0, 1, 0},{ 0, 1, 0},
+        { 0,-1, 0},{ 0,-1, 0},{ 0,-1, 0},{ 0,-1, 0}
+    };
+
+    // FIX: Flatten vec3f data into the float vector
+    for (const auto& vert : v)
+    {
+        m.vertices.push_back(vert.x);
+        m.vertices.push_back(vert.y);
+        m.vertices.push_back(vert.z);
+    }
+
+    for (const auto& norm : n)
+    {
+        m.normals.push_back(norm.x);
+        m.normals.push_back(norm.y);
+        m.normals.push_back(norm.z);
+    }
+
+    unsigned int idx[] = { 0,2,1, 0,3,2, 4,5,6, 4,6,7, 8,9,10, 8,10,11, 12,14,13, 12,15,14, 16,17,18, 16,18,19, 20,22,21, 20,23,22 };
+    for (int i = 0; i < 36; i++) m.indices.push_back(idx[i]);
+    m.dirty = true;
+}
+// ------ shader
+SimpleSSAO ssao;
+//SSAOMesh sphereMesh, floorMesh;
+
+
+
+
 
 // - ----------- UTLITIES  -----------
 
@@ -536,6 +601,7 @@ double prevLoss = 0.0;
 zVector grad;
 zVector gradPt;
 
+
 // -------------------------
 
 void setup()
@@ -578,10 +644,25 @@ void setup()
 
     SG = *new spaceGrid();
 
+    // ----- shader
+    ssao.setup();
+    ssao.samples = 1024;
+    ssao.bias = 0.1;
+    ssao.radius = 25;
+    //{ "LIT", "AO_RAW", "AO_BLUR", "NORM", "DEPTH", "POS", "DELTA", "SAMPLES" };
+    ssao.mode = 1;
+
+    ssao_createUnitCube(orientedCubeMesh);
+
+
     // ----------- tmp 
 
     keyPress('2', 0, 0);
     for (int i = 0; i < 10; i++)keyPress('=', 0, 0);
+
+    //
+
+    glShadeModel(GL_SMOOTH);
     
 }
 
@@ -593,9 +674,58 @@ void update(int value)
 void draw()
 {
     backGround(0.85);
+
+
+
+    ssao.clearQueue();
+    
+    for (auto pose : nn.poses)
+    {
+        float z = importedHeightField.getFieldValue(pose.c);
+        pose.c.z = importedHeightField.mapIsoToActualHeight(z);
+
+        vec3f pos(pose.c.x, pose.c.y, pose.c.z);
+        vec3f dir(pose.v.x, pose.v.y, pose.v.z);
+
+        zVector xAxis = pose.v;
+        zVector yAxis = xAxis ^ zVector(0, 0, 1);
+        zVector zAxis = zVector(0, 0, 1);
+        mat4f M;
+
+        // Column 0: X-Axis
+        M.m[0] = xAxis.x;
+        M.m[1] = xAxis.y;
+        M.m[2] = xAxis.z;
+        M.m[3] = 0.0f; // Last row element
+
+        // Column 1: Y-Axis
+        M.m[4] = yAxis.x;
+        M.m[5] = yAxis.y;
+        M.m[6] = yAxis.z;
+        M.m[7] = 0.0f; // Last row element
+
+        // Column 2: Z-Axis
+        M.m[8] = zAxis.x;
+        M.m[9] = zAxis.y;
+        M.m[10] = zAxis.z;
+        M.m[11] = 0.0f; // Last row element
+
+        // Column 3: Position
+        M.m[12] = pos.x;
+        M.m[13] = pos.y;
+        M.m[14] = pos.z;
+        M.m[15] = 1.0f; // Last row element
+
+        // 2. Scale (Multiply the basis vectors/columns by dimensions)
+
+
+
+        ssao.addObject(&orientedCubeMesh, M);
+    }
+    
+    ssao.draw();
+
     drawGrid(50);
-
-
     // ----------------------- imported heightfield and sample points 
 
     importedHeightField.drawSamplePoints();
@@ -630,7 +760,7 @@ void draw()
         pose.c.z = importedHeightField.mapIsoToActualHeight(z);
 
         
-        drawOrientedCube(pose.c, pose.v);
+        //drawOrientedCube(pose.c, pose.v);
         
         glColor3f(0, 0, 0);
         drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(zVector(pose.c.x, pose.c.y, 0)));
@@ -638,6 +768,7 @@ void draw()
         //drawLine(zVecToAliceVec(zVector(-35,50,0)), zVecToAliceVec(zVector(pose.c.x, pose.c.y, 0)));
     }
     
+
     //
     glColor3f(0, 0, 1);
     

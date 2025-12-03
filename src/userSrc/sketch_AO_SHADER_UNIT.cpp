@@ -6,7 +6,6 @@
 
 SimpleSSAO ssao;
 
-
 SSAOMesh sphereMesh, floorMesh;
 SSAOMesh orientedCubeMesh;
 
@@ -32,7 +31,6 @@ void createOrientedCube(SSAOMesh& m, vec3f dir, float L, float W, float D)
     m.vertices.clear(); m.normals.clear(); m.indices.clear();
     float x = L * 0.5f, y = W * 0.5f, z = D * 0.5f;
 
-    // Local Vertices (Axis Aligned)
     std::vector<vec3f> v = {
         {-x,-y,-z},{ x,-y,-z},{ x, y,-z},{-x, y,-z}, // Back
         {-x,-y, z},{ x,-y, z},{ x, y, z},{-x, y, z}, // Front
@@ -42,7 +40,6 @@ void createOrientedCube(SSAOMesh& m, vec3f dir, float L, float W, float D)
         {-x,-y,-z},{ x,-y,-z},{ x,-y, z},{-x,-y, z}  // Bottom
     };
 
-    // Local Normals
     std::vector<vec3f> n = {
         { 0, 0,-1},{ 0, 0,-1},{ 0, 0,-1},{ 0, 0,-1},
         { 0, 0, 1},{ 0, 0, 1},{ 0, 0, 1},{ 0, 0, 1},
@@ -52,7 +49,6 @@ void createOrientedCube(SSAOMesh& m, vec3f dir, float L, float W, float D)
         { 0,-1, 0},{ 0,-1, 0},{ 0,-1, 0},{ 0,-1, 0}
     };
 
-    // Rotate Logic (CPU side baked mesh)
     mat4f R = alignToDir(dir);
 
     for (int i = 0; i < 24; i++) {
@@ -98,25 +94,29 @@ void addRandomSphere() {
     float x = (rand() % 800) / 10.0f - 40.0f;
     float y = (rand() % 800) / 10.0f - 40.0f;
     float z = ofRandom(1, 30);
-    float s = ofRandom(1, 5); //0.5f + (rand() % 150) / 100.0f;
+    float s = ofRandom(1, 5);
 
     mat4f M = transform4f(vec3f(x, y, z), vec3f(s, s, s));
     ssao.addObject(&sphereMesh, M);
 }
 
-void setup() 
+void setup()
 {
     ssao.setup();
     createSphereMesh(sphereMesh, 1.0f);
-    createSphereMesh(floorMesh, 1.0f);
 
-    // Create a Long thin slab
+    // --- FIX: Use a Cube for the floor instead of a Sphere ---
+    // A flattened sphere has unstable normals at the edges, causing SSAO artifacts.
+    // A box scaled to be a floor has perfectly flat normals (0,0,1).
+    createOrientedCube(floorMesh, vec3f(0, 0, 1), 1.0f, 1.0f, 1.0f);
+
+    // Create a Long thin slab for vector field
     createOrientedCube(orientedCubeMesh, vec3f(1, 0, 0), 6.0f, 2.0f, 1.0f);
 
     ssao.clearQueue();
 
-    // 1. Floor
-    mat4f floorM = transform4f(vec3f(0, 0, -2), vec3f(120, 120, 0.1f));
+    // 1. Floor (Scale the Unit Cube to be a floor)
+    mat4f floorM = transform4f(vec3f(0, 0, -3), vec3f(120, 120,2.f));
     ssao.addObject(&floorMesh, floorM);
 
     // 2. Vector Field of Cubes
@@ -125,37 +125,28 @@ void setup()
     // 3. Initial Sphere
     addRandomSphere();
 
-  
     glShadeModel(GL_SMOOTH);
 }
 
 void update(int v) {  }
 
-void draw() 
+void draw()
 {
-
     backGround(0.95, 0.95, 0.95);
 
     // Queue is persistent, just draw.
-    ssao.draw(); // this wipes anything drawn before.
+    ssao.draw();
 
     drawGrid(50);
 
     //--------------------------------
     setup2d();
-
-        char info[128];
-        const char* mNames[] = { "LIT", "AO_RAW", "AO_BLUR", "NORM", "DEPTH", "POS", "DELTA", "SAMPLES" };
-        sprintf(info, "Objs:%d | Mode:%s | Bias:%.2f | Rad:%.2f |Samps:%d", ssao.getObjectCount(), mNames[ssao.mode % 8], ssao.bias, ssao.radius, ssao.samples);
-        
-        glColor3f(0, 0, 0);
-        Alice::drawString(info, 20, 40);
-
-     restore3d();
-
-
-
-    
+    char info[128];
+    const char* mNames[] = { "LIT", "AO_RAW", "AO_BLUR", "NORM", "DEPTH", "POS", "DELTA", "SAMPLES" };
+    sprintf(info, "Objs:%d | Mode:%s | Bias:%.2f | Rad:%.2f |Samps:%d", ssao.getObjectCount(), mNames[ssao.mode % 8], ssao.bias, ssao.radius, ssao.samples);
+    glColor3f(0, 0, 0);
+    Alice::drawString(info, 20, 40);
+    restore3d();
 }
 
 void keyPress(unsigned char k, int, int) {

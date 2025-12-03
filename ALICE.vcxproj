@@ -46,7 +46,9 @@
     <ClCompile Include="src\userSrc\sketch_3DfieldSlicer.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="src\userSrc\sketch_AO_shader_test.cpp" />
+    <ClCompile Include="src\userSrc\sketch_AO_SHADER_UNIT.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="src\userSrc\sketch_chat_AStar_marchingTriangle.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
