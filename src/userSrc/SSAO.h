@@ -8,15 +8,26 @@
 #include <functional>
 #include "main.h" 
 
+// --------------------------------------------------------------------------------
+// CONFIGURATION
+// --------------------------------------------------------------------------------
 #define MAX_SSAO_SAMPLES 1024 
 
 // --------------------------------------------------------------------------------
 // MATH & TYPES
 // --------------------------------------------------------------------------------
-struct vec3f { float x, y, z; vec3f(float _x = 0, float _y = 0, float _z = 0) : x(_x), y(_y), z(_z) {} };
+struct vec3f {
+    float x, y, z;
+    vec3f(float _x = 0, float _y = 0, float _z = 0) : x(_x), y(_y), z(_z) {}
+};
+
 struct mat4f { float m[16]; };
 
 inline mat4f identity4f() { return { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 }; }
+
+inline vec3f normalize(vec3f v) { float l = sqrt(v.x * v.x + v.y * v.y + v.z * v.z); if (l == 0) return { 0,0,0 }; return { v.x / l, v.y / l, v.z / l }; }
+inline vec3f cross(vec3f a, vec3f b) { return { a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x }; }
+inline float dot(vec3f a, vec3f b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
 inline mat4f transform4f(vec3f t, vec3f s) {
     mat4f R = identity4f();
@@ -25,10 +36,25 @@ inline mat4f transform4f(vec3f t, vec3f s) {
     return R;
 }
 
+// Rotation Matrix aligning X-Axis to 'dir' (For the 6x2x1 blocks)
+inline mat4f alignToDir(vec3f dir) {
+    vec3f x = normalize(dir);
+    vec3f up = { 0,0,1 };
+    if (abs(dot(x, up)) > 0.99f) up = { 0,1,0 };
+    vec3f y = normalize(cross(up, x));
+    vec3f z = cross(x, y);
+    mat4f R = identity4f();
+    R.m[0] = x.x; R.m[1] = x.y; R.m[2] = x.z;
+    R.m[4] = y.x; R.m[5] = y.y; R.m[6] = y.z;
+    R.m[8] = z.x; R.m[9] = z.y; R.m[10] = z.z;
+    return R;
+}
+
 inline mat4f multiply(mat4f A, mat4f B) {
     mat4f R;
-    for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++)
-        R.m[c * 4 + r] = A.m[0 * 4 + r] * B.m[c * 4 + 0] + A.m[1 * 4 + r] * B.m[c * 4 + 1] + A.m[2 * 4 + r] * B.m[c * 4 + 2] + A.m[3 * 4 + r] * B.m[c * 4 + 3];
+    for (int c = 0; c < 4; c++)
+        for (int r = 0; r < 4; r++)
+            R.m[c * 4 + r] = A.m[0 * 4 + r] * B.m[c * 4 + 0] + A.m[1 * 4 + r] * B.m[c * 4 + 1] + A.m[2 * 4 + r] * B.m[c * 4 + 2] + A.m[3 * 4 + r] * B.m[c * 4 + 3];
     return R;
 }
 
@@ -63,7 +89,10 @@ struct SSAOMesh {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo); glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * 4, indices.data(), GL_STATIC_DRAW);
         glBindVertexArray(0); dirty = false;
     }
-    void draw() { if (dirty || vao == 0) updateGL(); glBindVertexArray(vao); glDrawElements(GL_TRIANGLES, (GLsizei)indices.size(), GL_UNSIGNED_INT, 0); glBindVertexArray(0); }
+    void draw() {
+        if (dirty || vao == 0) updateGL();
+        glBindVertexArray(vao); glDrawElements(GL_TRIANGLES, (GLsizei)indices.size(), GL_UNSIGNED_INT, 0); glBindVertexArray(0);
+    }
 };
 
 // --------------------------------------------------------------------------------
@@ -142,39 +171,26 @@ private:
                    float rand(vec2 n){return fract(sin(dot(n,vec2(12.9,78.2)))*43758.5);}
                    void main(){
                        vec2 uv=gl_FragCoord.xy/vec2(W,H); vec4 pD=texture(gP,uv);
-                       if(pD.a<0.5){ FragData=vec4(1); return; } // BG
+                       if(pD.a<0.5){ FragData=vec4(1); return; } 
                        vec3 p=pD.xyz; vec3 n=normalize(texture(gN,uv).rgb);
                        if(dot(n,vec3(0,0,1))<0) n=-n; 
                        vec3 rv=normalize(vec3(rand(uv*W),rand(uv*H),0));
                        vec3 T=normalize(rv-n*dot(rv,n)); mat3 TBN=mat3(T,cross(n,T),n);
                        
-                       float occ = 0.0;
-                       float c_red = 0.0; // Occluded
-                       float c_grn = 0.0; // Visible
-                       float c_blu = 0.0; // Sky Hit
-
+                       float occ=0, c_red=0, c_grn=0, c_blu=0;
                        for(int i=0; i<sampleCount; i++){
                            vec3 sP=p+(TBN*k[i])*rad; vec4 off=P*vec4(sP,1); off.xy/=off.w; off.xy=off.xy*0.5+0.5;
                            if(off.x<0||off.y<0||off.x>1||off.y>1) continue;
-                           
-                           vec4 sVal = texture(gP,off.xy);
-                           float d = sVal.z; 
-                           bool isSky = sVal.a < 0.5;
-                           if(isSky) { d = -9e9; c_blu += 1.0; } 
+                           vec4 sVal=texture(gP,off.xy);
+                           float d=sVal.z; bool isSky=sVal.a<0.5;
+                           if(isSky) { d=-9e9; c_blu+=1.0; } 
                            float rng=smoothstep(0,1,rad/abs(p.z-d));
-                           
-                           if(d >= sP.z + bias) { occ += 1.0 * rng; c_red += 1.0 * rng; } 
-                           else if (!isSky) { c_grn += 1.0; }
+                           if(d>=sP.z+bias) { occ+=1.0*rng; c_red+=1.0*rng; } 
+                           else if(!isSky) { c_grn+=1.0; }
                        }
-
                        float finalOcc = 1.0 - (occ / float(sampleCount));
-                       
-                       if(mode == 7) {
-                           float total = float(sampleCount);
-                           FragData = vec4(c_red/total, c_grn/total, c_blu/total, 1.0);
-                       } else {
-                           FragData = vec4(finalOcc, finalOcc, finalOcc, 1.0);
-                       }
+                       if(mode == 7) FragData = vec4(c_red/sampleCount, c_grn/sampleCount, c_blu/sampleCount, 1.0);
+                       else FragData = vec4(finalOcc);
                    })");
         }
         void bind(GLuint p, GLuint n, mat4f& proj, float r, float b, int samples, int m, int w, int h) {
@@ -199,22 +215,16 @@ private:
                 vec4 pD=texture(gP,gl_FragCoord.xy/vec2(W,H));
                 if(pD.a < 0.5) discard; 
                 vec2 uv = gl_FragCoord.xy/vec2(W,H);
-                
-                // MODE 7 PASS THROUGH
                 if (mode == 7) { C = texture(sIn, uv); return; }
-
                 float res=texture(sIn,uv).r;
                 if(blur){
                     vec2 ts = 1.0/vec2(W,H);
                     float tot=0, wTot=0; float cD=pD.z; vec3 cN=texture(gN,uv).rgb; 
                     for(int x=-2;x<=2;x++) for(int y=-2;y<=2;y++){
                         vec2 off=vec2(x,y)*ts; float sOcc=texture(sIn,uv+off).r;
-                        
-                        // BILATERAL WEIGHTS (SMART BLUR)
                         float wD=1.0/(1.0+abs(cD-texture(gP,uv+off).z)*100);
                         float wN=max(0,dot(cN,texture(gN,uv+off).rgb));
                         float w=exp(-(x*x+y*y)/2.0)*wD*wN;
-                        
                         tot+=sOcc*w; wTot+=w;
                     }
                     if(wTot>0) res=tot/wTot;
@@ -257,8 +267,7 @@ public:
     int getObjectCount() const { return (int)renderQueue.size(); }
 
     void draw() {
-        int w = glutGet(GLUT_WINDOW_WIDTH);
-        int h = glutGet(GLUT_WINDOW_HEIGHT);
+        int w = glutGet(GLUT_WINDOW_WIDTH); int h = glutGet(GLUT_WINDOW_HEIGHT);
         mat4f P = perspective(60.0f, (float)w / h, 1.0f, 1000.0f);
         float vRaw[16]; glGetFloatv(GL_MODELVIEW_MATRIX, vRaw);
         mat4f V; memcpy(V.m, vRaw, 16 * 4);
