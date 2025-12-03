@@ -16,20 +16,37 @@
 // --------------------------------------------------------------------------------
 // MATH & TYPES
 // --------------------------------------------------------------------------------
-struct vec3f {
+struct vec3f
+{
     float x, y, z;
     vec3f(float _x = 0, float _y = 0, float _z = 0) : x(_x), y(_y), z(_z) {}
 };
 
-struct mat4f { float m[16]; };
+struct mat4f
+{
+    float m[16];
+};
 
-inline mat4f identity4f() { return { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 }; }
+inline mat4f identity4f()
+{
+    return { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+}
 
-inline vec3f normalize(vec3f v) { float l = sqrt(v.x * v.x + v.y * v.y + v.z * v.z); if (l == 0) return { 0,0,0 }; return { v.x / l, v.y / l, v.z / l }; }
-inline vec3f cross(vec3f a, vec3f b) { return { a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x }; }
-inline float dot(vec3f a, vec3f b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+inline vec3f normalize(vec3f v)
+{
+    float l = sqrt(v.x * v.x + v.y * v.y + v.z * v.z); if (l == 0) return { 0,0,0 }; return { v.x / l, v.y / l, v.z / l };
+}
+inline vec3f cross(vec3f a, vec3f b)
+{
+    return { a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x };
+}
+inline float dot(vec3f a, vec3f b)
+{
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
 
-inline mat4f transform4f(vec3f t, vec3f s) {
+inline mat4f transform4f(vec3f t, vec3f s)
+{
     mat4f R = identity4f();
     R.m[0] = s.x; R.m[5] = s.y; R.m[10] = s.z;
     R.m[12] = t.x; R.m[13] = t.y; R.m[14] = t.z;
@@ -37,7 +54,8 @@ inline mat4f transform4f(vec3f t, vec3f s) {
 }
 
 // Rotation Matrix aligning X-Axis to 'dir' (For the 6x2x1 blocks)
-inline mat4f alignToDir(vec3f dir) {
+inline mat4f alignToDir(vec3f dir)
+{
     vec3f x = normalize(dir);
     vec3f up = { 0,0,1 };
     if (abs(dot(x, up)) > 0.99f) up = { 0,1,0 };
@@ -50,7 +68,8 @@ inline mat4f alignToDir(vec3f dir) {
     return R;
 }
 
-inline mat4f multiply(mat4f A, mat4f B) {
+inline mat4f multiply(mat4f A, mat4f B)
+{
     mat4f R;
     for (int c = 0; c < 4; c++)
         for (int r = 0; r < 4; r++)
@@ -58,7 +77,8 @@ inline mat4f multiply(mat4f A, mat4f B) {
     return R;
 }
 
-inline mat4f perspective(float fov, float aspect, float znear, float zfar) {
+inline mat4f perspective(float fov, float aspect, float znear, float zfar)
+{
     float f = 1.0f / tan(fov * 0.5f * 3.14159265f / 180.0f);
     mat4f R = { 0 };
     R.m[0] = f / aspect; R.m[5] = f;
@@ -71,13 +91,15 @@ inline mat4f perspective(float fov, float aspect, float znear, float zfar) {
 // --------------------------------------------------------------------------------
 // DATA CONTAINER
 // --------------------------------------------------------------------------------
-struct SSAOMesh {
+struct SSAOMesh
+{
     std::vector<float> vertices;
     std::vector<float> normals;
     std::vector<unsigned int> indices;
     GLuint vao = 0; GLuint vbo[2] = { 0,0 }; GLuint ebo = 0; bool dirty = true;
 
-    void updateGL() {
+    void updateGL()
+    {
         if (!vao) glGenVertexArrays(1, &vao);
         if (!vbo[0]) glGenBuffers(2, vbo);
         if (!ebo) glGenBuffers(1, &ebo);
@@ -89,7 +111,8 @@ struct SSAOMesh {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo); glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * 4, indices.data(), GL_STATIC_DRAW);
         glBindVertexArray(0); dirty = false;
     }
-    void draw() {
+    void draw()
+    {
         if (dirty || vao == 0) updateGL();
         glBindVertexArray(vao); glDrawElements(GL_TRIANGLES, (GLsizei)indices.size(), GL_UNSIGNED_INT, 0); glBindVertexArray(0);
     }
@@ -98,10 +121,12 @@ struct SSAOMesh {
 // --------------------------------------------------------------------------------
 // INTERNAL SHADER CLASSES
 // --------------------------------------------------------------------------------
-class _InternalShader {
+class _InternalShader
+{
 protected:
     GLuint pid;
-    void create(std::string v, std::string f) {
+    void create(std::string v, std::string f)
+    {
         GLuint vs = glCreateShader(GL_VERTEX_SHADER); const char* vv = v.c_str(); glShaderSource(vs, 1, &vv, 0); glCompileShader(vs);
         GLuint fs = glCreateShader(GL_FRAGMENT_SHADER); const char* ff = f.c_str(); glShaderSource(fs, 1, &ff, 0); glCompileShader(fs);
         pid = glCreateProgram(); glAttachShader(pid, vs); glAttachShader(pid, fs); glLinkProgram(pid);
@@ -110,17 +135,21 @@ protected:
     }
 };
 
-class SimpleSSAO {
+class SimpleSSAO
+{
 private:
-    struct FBO {
+    struct FBO
+    {
         GLuint id = 0; int w = 0, h = 0; std::vector<GLuint> texs; float savedClearColor[4] = { 0,0,0,0 };
-        void resize(int _w, int _h, int n) {
+        void resize(int _w, int _h, int n)
+        {
             if (w == _w && h == _h) return;
             if (id) { glDeleteFramebuffers(1, &id); glDeleteTextures(texs.size(), texs.data()); texs.clear(); }
             w = _w; h = _h;
             glGenFramebuffers(1, &id); glBindFramebuffer(GL_FRAMEBUFFER, id);
             std::vector<GLenum> dbs;
-            for (int i = 0; i < n; i++) {
+            for (int i = 0; i < n; i++)
+            {
                 GLuint t; glGenTextures(1, &t); glBindTexture(GL_TEXTURE_2D, t);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, 0);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -140,9 +169,11 @@ private:
     struct RenderItem { SSAOMesh* mesh; mat4f modelMatrix; };
     FBO gBuffer; FBO ssaoBuffer; std::vector<RenderItem> renderQueue;
 
-    class GShader : public _InternalShader {
+    class GShader : public _InternalShader
+    {
     public:
-        void init() {
+        void init()
+        {
             create(
                 "#version 400\n layout(location=0) in vec3 P; layout(location=1) in vec3 N; uniform mat4 MVP,MV; out vec3 vP,vN; void main(){ vec4 p=MV*vec4(P,1); vP=p.xyz; vN=normalize(transpose(inverse(mat3(MV)))*N); gl_Position=MVP*vec4(P,1); }",
                 "#version 400\n layout(location=0) out vec4 gP; layout(location=1) out vec4 gN; in vec3 vP,vN; void main(){ gP=vec4(vP,1); gN=vec4(normalize(vN),1); }"
@@ -151,12 +182,15 @@ private:
         void bind(mat4f& MVP, mat4f& MV) { glUseProgram(pid); glUniformMatrix4fv(glGetUniformLocation(pid, "MVP"), 1, 0, MVP.m); glUniformMatrix4fv(glGetUniformLocation(pid, "MV"), 1, 0, MV.m); }
     } gs;
 
-    class SShader : public _InternalShader {
+    class SShader : public _InternalShader
+    {
     public:
         float kernel[MAX_SSAO_SAMPLES * 3];
-        void init() {
+        void init()
+        {
             std::default_random_engine gen; std::uniform_real_distribution<float> rnd(0, 1);
-            for (int i = 0; i < MAX_SSAO_SAMPLES; ++i) {
+            for (int i = 0; i < MAX_SSAO_SAMPLES; ++i)
+            {
                 float s = (float)i / (float)MAX_SSAO_SAMPLES; s = 0.1f + 0.9f * s * s;
                 float x = rnd(gen) * 2 - 1; float y = rnd(gen) * 2 - 1; float z = rnd(gen);
                 float l = sqrt(x * x + y * y + z * z);
@@ -193,7 +227,8 @@ private:
                        else FragData = vec4(finalOcc);
                    })");
         }
-        void bind(GLuint p, GLuint n, mat4f& proj, float r, float b, int samples, int m, int w, int h) {
+        void bind(GLuint p, GLuint n, mat4f& proj, float r, float b, int samples, int m, int w, int h)
+        {
             glUseProgram(pid); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, p); glUniform1i(glGetUniformLocation(pid, "gP"), 0);
             glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, n); glUniform1i(glGetUniformLocation(pid, "gN"), 1);
             glUniform3fv(glGetUniformLocation(pid, "k"), MAX_SSAO_SAMPLES, kernel);
@@ -205,9 +240,11 @@ private:
         }
     } ss;
 
-    class BShader : public _InternalShader {
+    class BShader : public _InternalShader
+    {
     public:
-        void init() {
+        void init()
+        {
             create("#version 400\n layout(location=0) in vec3 P; void main(){gl_Position=vec4(P,1);}",
                 R"(#version 400
             out vec4 C; uniform sampler2D sIn,gP,gN; uniform int mode; uniform bool blur; uniform float W,H;
@@ -235,13 +272,21 @@ private:
                 else if(mode==3) C=vec4(texture(gN,uv).rgb*0.5+0.5,1);
                 else if(mode==4) C=vec4(vec3(clamp((-pD.z-20)/100,0,1)),1);
                 else if(mode==5) C=vec4(abs(pD.xyz)/50,1);
+                else if(mode==6) { 
+                    // DELTA: Show difference (Occlusion amount) in Red
+                    // res = 1.0 (White/Open), res = 0.0 (Black/Occluded)
+                    // Difference = (1.0 - res)
+                    C=vec4(1.0 - res, 0.0, 0.0, 1.0); 
+                }
                 else { 
+                    // LIT: Lighting WITH AO
                     vec3 L=normalize(vec3(0.5,0.5,1)); float d=max(dot(texture(gN,uv).rgb,L),0);
                     C=vec4(vec3(0.3*res + 0.7*d),1); 
                 }
             })");
         }
-        void bind(GLuint s, GLuint p, GLuint n, int m, bool b, int w, int h) {
+        void bind(GLuint s, GLuint p, GLuint n, int m, bool b, int w, int h)
+        {
             glUseProgram(pid); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, s); glUniform1i(glGetUniformLocation(pid, "sIn"), 0);
             glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, p); glUniform1i(glGetUniformLocation(pid, "gP"), 1);
             glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, n); glUniform1i(glGetUniformLocation(pid, "gN"), 2);
@@ -266,7 +311,8 @@ public:
     void clearQueue() { renderQueue.clear(); }
     int getObjectCount() const { return (int)renderQueue.size(); }
 
-    void draw() {
+    void draw()
+    {
         int w = glutGet(GLUT_WINDOW_WIDTH); int h = glutGet(GLUT_WINDOW_HEIGHT);
         mat4f P = perspective(60.0f, (float)w / h, 1.0f, 1000.0f);
         float vRaw[16]; glGetFloatv(GL_MODELVIEW_MATRIX, vRaw);
@@ -275,7 +321,8 @@ public:
         gBuffer.resize(w, h, 2); ssaoBuffer.resize(w, h, 1);
         glDisable(GL_BLEND); gBuffer.bind(); glEnable(GL_DEPTH_TEST);
 
-        for (const auto& item : renderQueue) {
+        for (const auto& item : renderQueue)
+        {
             if (!item.mesh) continue;
             mat4f MV = multiply(V, item.modelMatrix);
             mat4f MVP = multiply(P, MV);

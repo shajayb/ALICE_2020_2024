@@ -5,7 +5,7 @@
 #include "SSAO.h"
 
 SimpleSSAO ssao;
-float g_rotation = 0.0f;
+
 
 SSAOMesh sphereMesh, floorMesh;
 SSAOMesh orientedCubeMesh;
@@ -97,13 +97,15 @@ void addRandomSphere() {
     // Use existing sphereMesh, just transform it
     float x = (rand() % 800) / 10.0f - 40.0f;
     float y = (rand() % 800) / 10.0f - 40.0f;
-    float s = 0.5f + (rand() % 150) / 100.0f;
+    float z = ofRandom(1, 30);
+    float s = ofRandom(1, 5); //0.5f + (rand() % 150) / 100.0f;
 
-    mat4f M = transform4f(vec3f(x, y, s), vec3f(s, s, s));
+    mat4f M = transform4f(vec3f(x, y, z), vec3f(s, s, s));
     ssao.addObject(&sphereMesh, M);
 }
 
-void setup() {
+void setup() 
+{
     ssao.setup();
     createSphereMesh(sphereMesh, 1.0f);
     createSphereMesh(floorMesh, 1.0f);
@@ -123,23 +125,37 @@ void setup() {
     // 3. Initial Sphere
     addRandomSphere();
 
-    resetCamera(); Alice::setCamera(100, 30, 45, 0, 0);
+  
     glShadeModel(GL_SMOOTH);
 }
 
-void update(int v) { g_rotation += 0.01f; }
+void update(int v) {  }
 
-void draw() {
+void draw() 
+{
+
     backGround(0.95, 0.95, 0.95);
 
     // Queue is persistent, just draw.
-    ssao.draw();
+    ssao.draw(); // this wipes anything drawn before.
 
-    char info[128];
-    const char* mNames[] = { "LIT", "AO_RAW", "AO_BLUR", "NORM", "DEPTH", "POS", "DELTA", "SAMPLES" };
-    sprintf(info, "Objs:%d | Mode:%s | Bias:%.2f | Samps:%d", ssao.getObjectCount(), mNames[ssao.mode % 8], ssao.bias, ssao.samples);
-    Alice::drawString(info, 10, 20);
     drawGrid(50);
+
+    //--------------------------------
+    setup2d();
+
+        char info[128];
+        const char* mNames[] = { "LIT", "AO_RAW", "AO_BLUR", "NORM", "DEPTH", "POS", "DELTA", "SAMPLES" };
+        sprintf(info, "Objs:%d | Mode:%s | Bias:%.2f | Rad:%.2f |Samps:%d", ssao.getObjectCount(), mNames[ssao.mode % 8], ssao.bias, ssao.radius, ssao.samples);
+        
+        glColor3f(0, 0, 0);
+        Alice::drawString(info, 20, 40);
+
+     restore3d();
+
+
+
+    
 }
 
 void keyPress(unsigned char k, int, int) {
