@@ -28,6 +28,7 @@ using namespace zSpace;
 #include "SSAO.h"
 
 SSAOMesh orientedCubeMesh;
+SSAOMesh rhinoTerrainMesh;
 // Create a standard 1x1x1 cube centered at 0,0,0
 // No Rotation baked in. No Dimensions baked in.
 void ssao_createUnitCube(SSAOMesh& m)
@@ -420,6 +421,96 @@ void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
     rio.Write3dm(L"data/plots.3dm");
 }
 
+inline void convert_ONMesh_to_tri_arrays
+(
+    const ON_Mesh* msh,
+    std::vector<float>& vertices,
+    std::vector<float>& normals,
+    std::vector<unsigned int>& indices
+)
+{
+    vertices.clear();
+    normals.clear();
+    indices.clear();
+
+    if (!msh) return;
+
+    const int Vcount = msh->VertexCount();
+    const int Fcount = msh->m_F.Count();
+
+    //--------------------------------------------------------------------
+    // Ensure vertex normals exist
+    //--------------------------------------------------------------------
+    const ON_Mesh* srcMesh = msh;
+    std::unique_ptr<ON_Mesh> tempMesh;
+
+    if (!msh->HasVertexNormals())
+    {
+        tempMesh.reset(msh->Duplicate());
+        tempMesh->ComputeVertexNormals();
+        srcMesh = tempMesh.get();
+    }
+
+    //--------------------------------------------------------------------
+    // Copy vertices (flattened)
+    //--------------------------------------------------------------------
+    vertices.reserve(Vcount * 3);
+    for (int i = 0; i < Vcount; i++)
+    {
+        const ON_3dPoint& p = srcMesh->m_V[i];
+        vertices.push_back((float)p.x);
+        vertices.push_back((float)p.y);
+        vertices.push_back((float)p.z);
+    }
+
+    //--------------------------------------------------------------------
+    // Copy normals (flattened)
+    //--------------------------------------------------------------------
+    normals.reserve(Vcount * 3);
+    for (int i = 0; i < srcMesh->m_N.Count(); i++)
+    {
+        const ON_3fVector& n = srcMesh->m_N[i];
+        normals.push_back(n.x);
+        normals.push_back(n.y);
+        normals.push_back(n.z);
+    }
+
+    //--------------------------------------------------------------------
+    // Build triangle index buffer
+    //--------------------------------------------------------------------
+    indices.reserve(Fcount * 6);   // worst case (all quads)
+
+    for (int f = 0; f < Fcount; f++)
+    {
+        const ON_MeshFace& face = srcMesh->m_F[f];
+
+        int v0 = face.vi[0];
+        int v1 = face.vi[1];
+        int v2 = face.vi[2];
+        int v3 = face.vi[3];
+
+        bool isTriangle = (v2 == v3);
+
+        if (isTriangle)
+        {
+            // single triangle: (v0, v1, v2)
+            indices.push_back((unsigned int)v0);
+            indices.push_back((unsigned int)v1);
+            indices.push_back((unsigned int)v2);
+        }
+        else
+        {
+            // quad — split: (v0,v1,v2) and (v0,v2,v3)
+            indices.push_back((unsigned int)v0);
+            indices.push_back((unsigned int)v1);
+            indices.push_back((unsigned int)v2);
+
+            indices.push_back((unsigned int)v0);
+            indices.push_back((unsigned int)v2);
+            indices.push_back((unsigned int)v3);
+        }
+    }
+}
 
 
 
@@ -648,9 +739,9 @@ void setup()
     ssao.setup();
     ssao.samples = 1024;
     ssao.bias = 0.1;
-    ssao.radius = 25;
+    ssao.radius = 30;
     //{ "LIT", "AO_RAW", "AO_BLUR", "NORM", "DEPTH", "POS", "DELTA", "SAMPLES" };
-    ssao.mode = 1;
+    ssao.mode = 2;
 
     ssao_createUnitCube(orientedCubeMesh);
 
@@ -673,57 +764,11 @@ void update(int value)
 
 void draw()
 {
-    backGround(0.85);
+    backGround(0.99);
 
 
 
-    ssao.clearQueue();
-    
-    for (auto pose : nn.poses)
-    {
-        float z = importedHeightField.getFieldValue(pose.c);
-        pose.c.z = importedHeightField.mapIsoToActualHeight(z);
-
-        vec3f pos(pose.c.x, pose.c.y, pose.c.z);
-        vec3f dir(pose.v.x, pose.v.y, pose.v.z);
-
-        zVector xAxis = pose.v;
-        zVector yAxis = xAxis ^ zVector(0, 0, 1);
-        zVector zAxis = zVector(0, 0, 1);
-        mat4f M;
-
-        // Column 0: X-Axis
-        M.m[0] = xAxis.x;
-        M.m[1] = xAxis.y;
-        M.m[2] = xAxis.z;
-        M.m[3] = 0.0f; // Last row element
-
-        // Column 1: Y-Axis
-        M.m[4] = yAxis.x;
-        M.m[5] = yAxis.y;
-        M.m[6] = yAxis.z;
-        M.m[7] = 0.0f; // Last row element
-
-        // Column 2: Z-Axis
-        M.m[8] = zAxis.x;
-        M.m[9] = zAxis.y;
-        M.m[10] = zAxis.z;
-        M.m[11] = 0.0f; // Last row element
-
-        // Column 3: Position
-        M.m[12] = pos.x;
-        M.m[13] = pos.y;
-        M.m[14] = pos.z;
-        M.m[15] = 1.0f; // Last row element
-
-        // 2. Scale (Multiply the basis vectors/columns by dimensions)
-
-
-
-        ssao.addObject(&orientedCubeMesh, M);
-    }
-    
-    ssao.draw();
+   
 
     drawGrid(50);
     // ----------------------- imported heightfield and sample points 
@@ -760,7 +805,7 @@ void draw()
         pose.c.z = importedHeightField.mapIsoToActualHeight(z);
 
         
-        //drawOrientedCube(pose.c, pose.v);
+       // drawOrientedCube(pose.c, pose.v);
         
         glColor3f(0, 0, 0);
         drawLine(zVecToAliceVec(pose.c), zVecToAliceVec(zVector(pose.c.x, pose.c.y, 0)));
@@ -807,6 +852,55 @@ void draw()
         //existingPathsField.drawFieldPoints();
         existingPathsField.drawIsocontours(threshold);
     }
+
+    //
+
+    ssao.clearQueue();
+
+    for (auto pose : nn.poses)
+    {
+        float z = importedHeightField.getFieldValue(pose.c);
+        pose.c.z = importedHeightField.mapIsoToActualHeight(z);
+
+        vec3f pos(pose.c.x, pose.c.y, pose.c.z);
+        vec3f dir(pose.v.x, pose.v.y, pose.v.z);
+
+        // Dimensions
+        float len = 6.0f;
+        float wid = 2.75f;
+        float ht = 1.5f;
+
+        // IMPORTANT: Keep this at 1.0f unless you know for a fact 
+        // your View has a global scale applied. Based on previous turns, 
+        // you likely need this to match the wireframe's "Spread".
+        float globalScale = 1.0f;
+
+        // 1. Rotation (Use the new Axis-Angle logic)
+        mat4f M = alignToDir(dir);
+
+        // 2. Scale (Multiply the basis vectors/columns by dimensions)
+        M.m[0] *= len;
+        M.m[1] *= len;
+        M.m[2] *= len;
+
+        M.m[4] *= wid;
+        M.m[5] *= wid;
+        M.m[6] *= wid;
+
+        M.m[8] *= ht;
+        M.m[9] *= ht;
+        M.m[10] *= ht;
+
+        // 3. Translation
+        M.m[12] = pos.x * globalScale;
+        M.m[13] = pos.y * globalScale;
+        M.m[14] = pos.z * globalScale;
+
+        ssao.addObject(&orientedCubeMesh, M);
+    }
+
+
+    ssao.draw();
 
 
 
@@ -913,6 +1007,33 @@ void keyPress(unsigned char k, int xm, int ym)
         importedHeightField.subtract(existingPathsField);
 
         nn.correspondingHeightField = &importedHeightField;
+
+        // ---------------------- terrain mesh
+
+        for (const auto& obj : meshes)
+        {
+
+            const ON_Mesh* msh = ON_Mesh::Cast(obj.geometry);
+
+            if (msh && obj.name == L"TERRAIN") // all curves with name Attr == EXIST_PATH
+            {
+                //msh->
+                
+                convert_ONMesh_to_tri_arrays(msh, rhinoTerrainMesh.vertices, rhinoTerrainMesh.normals, rhinoTerrainMesh.indices);
+
+               
+
+                if (rhinoTerrainMesh.vertices.size() == rhinoTerrainMesh.normals.size() && rhinoTerrainMesh.indices.size() > 3)
+                {
+                    printf("Mesh -> V:%zu  N:%zu  I:%zu\n",
+                        rhinoTerrainMesh.vertices.size(),
+                        rhinoTerrainMesh.normals.size(),
+                        rhinoTerrainMesh.indices.size());
+
+                    ssao.addObject(&rhinoTerrainMesh, vec3f{ 0,0,0 });
+                }
+            }
+        }
     }
     
     
