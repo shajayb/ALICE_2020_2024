@@ -259,7 +259,7 @@ private:
 
 public:
     float bias = 0.1f;
-    float radius = 5.0f;
+    double radius = 5.0f;
     int samples = 32;
     int mode = 0;
     bool blur = true;

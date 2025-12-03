@@ -10,7 +10,7 @@
 #include <fstream>
 #include <sstream>
 #include <map>
-#include <random> // Added for std::mt19937
+#include <random>
 
 // - ----------- OPEN NURBS -----------
 #include "RhinoIO.h"
@@ -135,7 +135,7 @@ inline void convert_ONMesh_to_tri_arrays
 }
 
 // ------------------------------------------------------------
-// RESTORED FUNCTIONS (Fixes LNK2001 Errors)
+// DATA FUNCTIONS
 // ------------------------------------------------------------
 
 void write_3DM(vector<parcel> plots, float scale, zVector cDst, zVector cSrc)
@@ -226,8 +226,6 @@ void trainSGD(heightfieldNN& nn, vector<float>& dummyInput, vector<float>& dummy
     nn.computeGradient(dummyInput, dummyTarget, grad);
 
     // 5. Learning-rate adaptation + backward update
-    // printf(" %.4f,%.4f \n", fabs(loss - prevLoss), learningRate);
-
     if (fabs(loss - prevLoss) < 1e-2) learningRate *= 1.1;
 
     learningRate = ofClamp(learningRate, 1e-2, 0.95);
@@ -267,6 +265,31 @@ void shortest_paths_N_x_M
             paths.push_back(sf_field.lastShortestPath);
         }
     }
+}
+
+// ------------------------------------------------------------
+// MATRIX HELPERS
+// ------------------------------------------------------------
+
+// Builds a TRS matrix for the cabins (Translation, Rotation, Scale)
+mat4f computeBoxTransform(vec3f pos, vec3f dir, float ls = 12.0f * 0.5, float ws = 6.0f * 0.5, float hs = 3.0f * 0.5)
+{
+    // 1. Rotation (Align X-axis to dir)
+    mat4f R = alignToDir(dir);
+
+    // 2. Scale (Cabins are roughly 12x6x4)
+    mat4f S = identity4f();
+    S.m[0] = ls; S.m[5] = ws; S.m[10] = hs;
+
+    // 3. Translation
+    mat4f T = identity4f();
+    T.m[12] = pos.x; T.m[13] = pos.y; T.m[14] = pos.z;
+
+    // Order: T * (R * S) -> Scale local, Rotate, Translate
+    mat4f RS = multiply(R, S);
+    mat4f TRS = multiply(T, RS);
+
+    return TRS;
 }
 
 // - ----------- APPLICATION STATE -----------
@@ -329,7 +352,6 @@ struct SimulationState
 
     void createUnitCube(SSAOMesh& m)
     {
-        // Re-implement or call static helper
         ssao_createUnitCube(m);
     }
 
@@ -348,7 +370,6 @@ struct SimulationState
             -x,-y,-z, x,-y,-z, x,-y, z, -x,-y, z  // Bottom
         };
 
-        // Normals (approximate for cube)
         std::vector<float> n = {
             0, 0,-1, 0, 0,-1, 0, 0,-1, 0, 0,-1,
             0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
@@ -617,7 +638,6 @@ void Action_ExtractNextContour()
 
 void Action_TrainStep()
 {
-    // Using dummy targets for unsupervised/reinforcement style loss encoded in NN
     trainSGD(sim.nn, sim.nnDummyInput, sim.nnDummyTarget, sim.nnOutput, sim.prevLoss, sim.learningRate);
 }
 
@@ -652,7 +672,6 @@ void Render_Paths(const std::vector<std::vector<zVector>>& paths)
     {
         if (!path.empty())
         {
-            // Cast const away for compatibility with legacy draw functions if needed
             for (size_t i = 0; i < path.size() - 1; i++)
                 drawLine(zVecToAliceVec(const_cast<zVector&>(path[i])), zVecToAliceVec(const_cast<zVector&>(path[i + 1])));
 
@@ -667,18 +686,22 @@ void Render_SSAO_Pass()
 {
     sim.ssao.clearQueue();
 
-    // 1. Cabins / Parcels from NN Poses
+    // 1. Cabins / Parcels from NN Poses (COLOR = RED)
+    vec3f cabinColor = { 0.8f, 0.3f, 0.3f };
     for (auto pose : sim.nn.poses)
     {
         float z = sim.terrainField.getFieldValue(pose.c);
-        pose.c.z = sim.terrainField.mapIsoToActualHeight(z);
+        pose.c.z = sim.terrainField.mapIsoToActualHeight(z) + 1;
 
+        // Calculate Transform (TRS)
         mat4f M = computeBoxTransform(vec3f{ pose.c.x, pose.c.y, pose.c.z }, vec3f{ pose.v.x, pose.v.y, pose.v.z });
-        sim.ssao.addObject(&sim.orientedCubeMesh, M);
+
+        sim.ssao.addObject(&sim.orientedCubeMesh, M, cabinColor);
     }
 
-    // 2. Terrain
-    sim.ssao.addObject(&sim.terrainMesh, identity4f());
+    // 2. Terrain (COLOR = GREY)
+    vec3f terrainColor = { 0.8f, 0.7f, 0.6f };
+    sim.ssao.addObject(&sim.terrainMesh, identity4f(), terrainColor);
 
     sim.ssao.draw();
 }
@@ -697,7 +720,7 @@ void setup()
     S.addSlider(&sim.ssao.radius, "sao_r");
     S.sliders[2].maxVal = 100;
 
-    B = *new ButtonGroup(Alice::vec(50, 100, 0));
+    B = *new ButtonGroup(Alice::vec(50, 125, 0));
     B.addButton(&sim.nn.o_flip_dir, "o_flip_dir");
 
     // Sim Init
@@ -705,13 +728,6 @@ void setup()
 
     // GL State
     glShadeModel(GL_SMOOTH);
-
-    //
-
-    keyPress('2', 0, 0);
-    for (int i = 0; i < 10; i++)keyPress('=', 0, 0);
-
-
 }
 
 void update(int value)
@@ -729,8 +745,8 @@ void draw()
     // 1. Render Scene with AO
     Render_SSAO_Pass();
 
-    // 2. Debug Visualization
-    drawGrid(50);
+    //// 2. Debug Visualization
+    //drawGrid(50);
 
     // Terrain Points
     sim.terrainField.drawSamplePoints();
