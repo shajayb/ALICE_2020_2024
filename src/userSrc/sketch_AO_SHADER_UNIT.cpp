@@ -14,11 +14,13 @@ Alice::vec zVecToAliceVec(zVector& in)
 }
 
 // Convert OpenNurbs Mesh to flat arrays for OpenGL
-inline void ConvertONMeshToTriArrays(
+inline void ConvertONMeshToTriArrays
+(
     const ON_Mesh* msh,
     std::vector<float>& vertices,
     std::vector<float>& normals,
-    std::vector<unsigned int>& indices)
+    std::vector<unsigned int>& indices
+)
 {
     vertices.clear();
     normals.clear();
