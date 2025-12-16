@@ -540,31 +540,10 @@ public:
         // -----------------------------
         // 3. LAGRANGIAN ORIENTATION LOSS  (pose alignment)
         // -----------------------------
-        for (auto& pose : poses)
-        {
-            // Target direction: gradient of polygon SDF
-            zVector targetDir1, targetDir2;
-            
+        
 
-            zVector gradAt = pose.c;
-            gradAt.x += 2;// gradient explodes at the center of the rectangle;
-
-            targetDir1 = pose.c - zVector(-35, 50, 0);// gradientAt(pose.c, polygons[0]);// should gradient of corresponding polygon
-            targetDir2 = correspondingHeightField->gradientAt(pose.c);// gradientAT_BlendOrientedRectSDF(gradAt, poses, 12 * 0.5 * 0.5, 5.5 * 0.5 * 0.5);
-            targetDir1 = targetDir2 ^ zVector(0, 0, o_flip_dir ? -1: 1); // tangent
-
-            zVector targetDir =  targetDir1* o_weight + targetDir2 * (1 - o_weight); ;
-            targetDir.normalize();
-
-            // Predicted direction: network output
-            zVector predDir = pose.v;
-            predDir.normalize();
-
-            float alignment = predDir * targetDir;     // cos(theta)
-            float angular_error = 1.0f - fabs(alignment);
-            orientationLoss += angular_error * angular_error;
-        }
-        orientationLoss /= (float)poses.size();
+        float flowLoss = o_flip_dir ? computeFlowAlignedQuadLoss(output) :  computeHybridOrientationLoss(output);
+        orientationLoss = flowLoss;
 
         // -----------------------------
         // 4. COMBINE (STABLE SCALING)
@@ -593,6 +572,200 @@ public:
         return totalLoss;
     }
 
+
+   // -----------------------------------------------------------------------------
+    // ORIENTATION LOSS
+    // -----------------------------------------------------------------------------
+    // Restores the logic from hybridCoverageLoss:
+    // Blends between Tangent and Gradient fields using 'o_weight'.
+    // o_weight = 1.0 -> Pure Tangent (Flow)
+    // o_weight = 0.0 -> Pure Gradient (Uphill)
+    // -----------------------------------------------------------------------------
+    float computeHybridOrientationLoss(std::vector<float>& output)
+    {
+        // 1. Setup
+        if (polygons.empty() || !correspondingHeightField) return 1e6f;
+
+        poses.clear();
+        extractPoses(output, poses, true); // Use raw centers for better gradients
+
+        int N = poses.size();
+        if (N == 0) return 0.0f;
+
+        float totalAngularError = 0.0f;
+
+        // 2. Compute Loss per Pose
+        for (auto& pose : poses)
+        {
+            // --- A. Calculate Targets from HeightField ---
+
+            // Target 2: Gradient (Uphill direction)
+            // We use the pointer to the external ScalarField/HeightField
+            zVector gradientDir = correspondingHeightField->gradientAt(pose.c);
+
+            // Safety check for flat areas
+            if (gradientDir.length() < 1e-6) gradientDir = zVector(1, 0, 0);
+
+            // Target 1: Tangent (Contour direction)
+            // Rotate gradient 90 degrees around Z
+            float Z_sign = o_flip_dir ? -1.0f : 1.0f;
+            zVector tangentDir = gradientDir ^ zVector(0, 0, Z_sign);
+
+            // --- B. Blend Targets ---
+            // o_weight determines the mix. 
+            // 1.0 = Follow contours (Tangent), 0.0 = Follow slope (Gradient)
+            zVector targetDir = (tangentDir * o_weight) + (gradientDir * (1.0 - o_weight));
+            targetDir.normalize();
+
+            // --- C. Compare with Prediction ---
+            zVector predDir = pose.v;
+            if (predDir.length() < 1e-6) predDir = zVector(1, 0, 0);
+            predDir.normalize();
+
+            // --- D. Loss Calculation ---
+            // 1 - |cos(theta)| allows alignment with +dir or -dir (bidirectional)
+            float alignment = predDir * targetDir;
+            float angular_error = 1.0f - std::fabs(alignment);
+
+            totalAngularError += angular_error * angular_error;
+        }
+
+        // 3. Average and Store
+        float avgLoss = totalAngularError / (float)N;
+        orientationLoss = avgLoss; // Update member for visualization
+
+        return avgLoss;
+    }
+
+    // -----------------------------------------------------------------------------
+    // PAIRWISE FLOW-ALIGNED QUADRANGULAR LOSS
+    // -----------------------------------------------------------------------------
+    // Replaces generic global orientation with local tangent-frame alignment.
+    // Enforces:
+    // 1. Orthogonality (Anti-Hex): Penalizes 45/60 deg neighbors relative to flow.
+    // 2. Axial Spacing: Pulls neighbors to 'targetDist' along flow lines.
+    // 3. Repulsion: Prevents overlap.
+    // -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+    // PAIRWISE FLOW-ALIGNED QUADRANGULAR LOSS (GRADIENT CORRECTED)
+    // -----------------------------------------------------------------------------
+    // 1. Alignment Term: Forces poses[i].v to match the SDF Tangent field.
+    // 2. Lattice Term: Forces neighbors to form quads aligned with poses[i].v.
+    // -----------------------------------------------------------------------------
+    float computeFlowAlignedQuadLoss(std::vector<float>& output, float spacingScale = 2.0f)
+    {
+        // --- 1. Setup & Extraction ---
+        if (polygons.empty()) return 1e6f;
+
+        poses.clear();
+        extractPoses(output, poses, true); // Raw centers for cleaner gradients
+
+        int N = poses.size();
+        if (N < 2) return 0.0f;
+
+        // Weights
+        float w_align = 2.0f;   // Forces v to match field
+        float w_axial = 1.0f;   // Spacing
+        float w_ortho = 2.5f;   // Quad shape
+        float w_repel = 5.0f;   // Collisions
+
+        float targetDist = spacingScale * radius;
+        float epsilon = 1e-5f;
+        float kernelSigma = targetDist * 1.25f;
+
+        float L_align_sum = 0.0f;
+        float L_axial_sum = 0.0f;
+        float L_ortho_sum = 0.0f;
+        float L_repel_sum = 0.0f;
+        float pairWeightSum = 0.0f;
+
+        // --- 2. Alignment Loss (Couples v to Geometry) ---
+        // We also precompute the frame for the pairwise loop here.
+        std::vector<zVector> predTangents(N);
+        std::vector<zVector> predNormals(N);
+
+        for (int i = 0; i < N; ++i)
+        {
+            // A. Get Ground Truth Field from SDF
+            zVector g = gradientAt(poses[i].c, polygons[0]);
+            if (g.length() > epsilon) g.normalize();
+            else g = zVector(1, 0, 0);
+
+            zVector trueTangent = zVector(-g.y, g.x, 0); // Rotate 90
+
+            // B. Get Predicted Orientation (Network Output)
+            zVector v_pred = poses[i].v;
+            if (v_pred.length() > epsilon) v_pred.normalize();
+
+            // C. Alignment Penalty: 1 - (v . t)^2
+            // Squared dot product allows 180-degree ambiguity (bidirectional flow)
+            float dotVal = v_pred * trueTangent;
+            float alignErr = 1.0f - (dotVal * dotVal);
+            L_align_sum += alignErr;
+
+            // D. Store predicted frame for the Packing Loop
+            // Crucial: We use the PREDICTED v for packing, not the ground truth.
+            predTangents[i] = v_pred;
+            predNormals[i] = zVector(-v_pred.y, v_pred.x, 0);
+        }
+
+        // --- 3. Pairwise Lattice Loss (Couples Centers to v) ---
+        for (int i = 0; i < N; ++i)
+        {
+            for (int j = i + 1; j < N; ++j)
+            {
+                zVector diff = poses[j].c - poses[i].c;
+                float d_ij = diff.length();
+
+                // Repulsion
+                float overlap = (2.0f * radius) - d_ij;
+                if (overlap > 0) L_repel_sum += overlap * overlap;
+
+                // Locality Cutoff
+                if (d_ij > kernelSigma * 2.5f) continue;
+                float weight = exp(-(d_ij * d_ij) / (kernelSigma * kernelSigma));
+
+                zVector s_hat = diff;
+                if (d_ij > epsilon) s_hat /= d_ij;
+
+                // Evaluate Frame using PREDICTED vectors
+                // dL/dv is now non-zero because t and n come from poses[i].v
+                auto evaluateFrame = [&](const zVector& t, const zVector& n)
+                    {
+                        float u = s_hat * t;
+                        float v = s_hat * n;
+
+                        // Ortho Loss: Penalize sin(2*theta)
+                        float angleErr = (2.0f * u * v);
+
+                        // Axial Loss
+                        float distErr = (d_ij - targetDist);
+
+                        return std::make_pair(distErr * distErr, angleErr * angleErr);
+                    };
+
+                std::pair<float, float> res_i = evaluateFrame(predTangents[i], predNormals[i]);
+                std::pair<float, float> res_j = evaluateFrame(predTangents[j], predNormals[j]);
+
+                L_axial_sum += weight * 0.5f * (res_i.first + res_j.first);
+                L_ortho_sum += weight * 0.5f * (res_i.second + res_j.second);
+                pairWeightSum += weight;
+            }
+        }
+
+        // --- 4. Normalization ---
+        float flow_norm = (pairWeightSum > epsilon) ? (1.0f / pairWeightSum) : 1.0f;
+        float repel_norm = (N * (N - 1) > 0) ? 1.0f / (float)(N * (N - 1)) : 1.0f;
+        float align_norm = 1.0f / (float)N;
+
+        // Store for debug
+        orientationLoss = (L_ortho_sum * flow_norm) + (L_align_sum * align_norm);
+
+        return (w_align * L_align_sum * align_norm) +
+            (w_axial * L_axial_sum * flow_norm) +
+            (w_ortho * L_ortho_sum * flow_norm) +
+            (w_repel * L_repel_sum * repel_norm);
+    }
     float coverageLoss(std::vector<float>& output)
     {
         if (polygons.empty()) return 1e6f;

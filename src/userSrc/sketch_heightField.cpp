@@ -344,8 +344,8 @@ struct SimulationState
         ssao.setup();
         ssao.samples = 1024;
         ssao.bias = 0.1;
-        ssao.radius = 30;
-        ssao.mode = 2; // AO_BLUR default
+        ssao.radius = 8;
+        ssao.mode = 6; // AO_BLUR default
 
         createUnitCube(orientedCubeMesh);
     }
@@ -776,6 +776,8 @@ void keyPress(unsigned char k, int xm, int ym)
 {
     // SSAO Debug
     if (k == 'd') sim.ssao.mode = (sim.ssao.mode + 1) % 8;
+
+
 
     // Actions
     if (k == '2') Action_ImportRhinoData();
